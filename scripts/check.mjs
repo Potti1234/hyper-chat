@@ -6,7 +6,8 @@ import { chromium } from 'playwright'
    ArrowUp, reactions and the emoji picker, deleting, threads (summary, pane,
    "also send to channel", a thread URL), unread channels, the Threads view,
    DMs, channel management (browse, create, join, topic, members, leave),
-   Activity (mentions, filters, opening an item) and Mark unread.
+   Activity (mentions, filters, opening an item), Mark unread, Saved for
+   later (the Later page) and pins.
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -31,7 +32,7 @@ const live = async (page, go) => {
   await go()
   await stream
   // Pages with key bindings are live once those are in; the others once the stream answered.
-  if (!/\/(channels|activity)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
+  if (!/\/(channels|activity|later)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
   else await page.waitForTimeout(300)
   await settle(page)
 }
@@ -41,7 +42,7 @@ const signIn = async (name, path) => {
   const errors = []
   page.on('pageerror', error => errors.push(`${name}: ${error}`))
   page.on('console', message => {
-    if (message.type() === 'error') errors.push(`${name}: ${message.text()}`)
+    if (message.type() === 'error') errors.push(`${name}: ${message.text()} after ${results.at(-1)?.name} ${page.url()}`)
   })
   await page.goto(`${base}${path}`)
   await page.getByLabel('Email').fill(DEMO[name])
@@ -203,6 +204,39 @@ try {
   check('the new-messages line moves there', await until(avery, () => document.querySelector('#new-divider') !== null))
   await visit(avery, '/client/ch_random')
   check('the conversation stays unread', await until(avery, () => [...document.querySelectorAll('#sidebar a')].some(link => link.textContent.includes('general') && getComputedStyle(link).fontWeight >= 700)))
+  await visit(avery, '/client/ch_general')
+
+  // Saved for later and pins
+  const keep = `Keep ${Date.now()}`
+  await blake.click('#composer')
+  await blake.keyboard.type(keep)
+  await blake.keyboard.press('Enter')
+  check('the message to save arrives', await sees(avery, keep))
+  const kept = avery.locator('#message-list li[data-author=mem_blake]').last()
+  await kept.hover()
+  await kept.getByRole('button', { name: 'Save for later' }).click()
+  check('saving labels the message', await until(avery, () => document.querySelector('#message-list li:last-child [data-saved-label]') !== null))
+  await kept.hover()
+  await kept.getByRole('button', { name: 'More actions' }).click()
+  await avery.click('#menu-pin')
+  check('pinning labels it for everyone', await until(blake, () => document.querySelector('#message-list li:last-child [data-pinned-label]')?.textContent.includes('Avery')))
+  check('the header shows the pins tab', await until(blake, () => document.querySelector('#open-pins') !== null))
+  await blake.click('#open-pins')
+  check('the pins tab lists the message', await until(blake, keep => document.querySelector('#pinned-messages')?.textContent.includes(keep), keep))
+  await blake.locator('#pinned-messages li').filter({ hasText: keep }).getByRole('button', { name: 'Un-pin' }).click()
+  check('un-pinning removes the label', await until(avery, () => document.querySelector('#message-list li:last-child [data-pinned-label]') === null))
+  await blake.keyboard.press('Escape')
+  await visit(avery, '/later')
+  check('Later lists the saved message first', (await avery.locator('#later-items li').first().innerText()).includes(keep))
+  await avery.locator('#later-items li').first().getByRole('button', { name: 'Mark complete' }).click()
+  check('completing moves it out of In progress', await until(avery, keep => !document.querySelector('#later-items')?.textContent.includes(keep), keep))
+  await avery.click('[data-tab=done]')
+  check('it is under Completed', await until(avery, keep => document.querySelector('#later-items')?.textContent.includes(keep), keep))
+  await avery.locator('#later-items li').filter({ hasText: keep }).getByRole('button', { name: 'Remove from Later' }).click()
+  check('removing takes it off Later', await until(avery, keep => !document.querySelector('#later-items')?.textContent.includes(keep), keep))
+  await avery.click('[data-tab=saved]')
+  await live(avery, () => avery.locator('#later-items li a').first().click())
+  check('Open goes to the conversation', /^\/client\//.test(new URL(avery.url()).pathname))
   await visit(avery, '/client/ch_general')
 
   // Direct messages

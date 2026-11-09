@@ -4,7 +4,7 @@ import { PgClient } from '@effect/sql-pg'
 import { Clock, Effect, Layer, Queue, Redacted, Schema as S, type Scope, Semaphore, SubscriptionRef } from 'effect'
 import { SqlClient, SqlError } from 'effect/sql'
 
-import { Channel, Member, Message, Read } from './domain'
+import { Channel, Member, Message, Read, Saved } from './domain'
 import { type Backend, type Snapshot, Workspace, fromBackend, newId, snapshotOf } from './store'
 import type { WorkspaceData } from './workspace'
 
@@ -15,7 +15,7 @@ import type { WorkspaceData } from './workspace'
      transaction that holds an advisory lock: it catches up with commits of
      other processes, applies the operation, writes the rows that changed
      (found by reference) and announces the new version with `pg_notify`.
-   - Members, channels, messages and reads are one JSONB document per row,
+   - Members, channels, messages, reads and saves are one JSONB document per row,
      decoded with their Schema on load. A field added later gets its default
      in `DEFAULTS`, so older rows still load.
    - Startup begins LISTEN before it reads, so no commit falls into a gap.
@@ -34,15 +34,16 @@ export const clientLayer = clientLayerFor(process.env['DATABASE_URL'] ?? DEFAULT
 
 type Sql = SqlClient.SqlClient
 
-type Collection = 'members' | 'channels' | 'messages' | 'reads'
+type Collection = 'members' | 'channels' | 'messages' | 'reads' | 'saves'
 
-const TABLES: ReadonlyArray<Collection> = ['members', 'channels', 'messages', 'reads']
+const TABLES: ReadonlyArray<Collection> = ['members', 'channels', 'messages', 'reads', 'saves']
 
 const SCHEMAS = {
   members: S.Array(Member),
   channels: S.Array(Channel),
   messages: S.Array(Message),
   reads: S.Array(Read),
+  saves: S.Array(Saved),
 } as const
 
 /** Defaults for fields added after the first release (older rows lack them). */
@@ -51,11 +52,12 @@ const DEFAULTS: Readonly<Record<Collection, Readonly<Record<string, unknown>>>> 
   channels: {},
   messages: { threadId: null, alsoInChannel: false },
   reads: {},
+  saves: {},
 }
 
 const keyOf = (collection: Collection, row: unknown): string => {
-  const item = row as { id?: string; memberId?: string; channelId?: string }
-  return collection === 'reads' ? `${item.memberId}:${item.channelId}` : (item.id ?? '')
+  const item = row as { id?: string; memberId?: string; channelId?: string; messageId?: string }
+  return collection === 'reads' ? `${item.memberId}:${item.channelId}` : collection === 'saves' ? `${item.memberId}:${item.messageId}` : (item.id ?? '')
 }
 
 const migrate = (sql: Sql) =>
@@ -80,12 +82,14 @@ const load = (sql: Sql): Effect.Effect<Snapshot, SqlError.SqlError | S.SchemaErr
     const channels = yield* Effect.flatMap(rowsOf('channels'), S.decodeUnknownEffect(SCHEMAS.channels))
     const messages = yield* Effect.flatMap(rowsOf('messages'), S.decodeUnknownEffect(SCHEMAS.messages))
     const reads = yield* Effect.flatMap(rowsOf('reads'), S.decodeUnknownEffect(SCHEMAS.reads))
+    const saves = yield* Effect.flatMap(rowsOf('saves'), S.decodeUnknownEffect(SCHEMAS.saves))
     const passwordRows = yield* sql<{ member_id: string; hash: string }>`SELECT member_id, hash FROM passwords`
     const data: WorkspaceData = {
       members,
       channels,
       messages: [...messages].sort((a, b) => a.createdAt - b.createdAt),
       reads,
+      saves,
       passwords: Object.fromEntries(passwordRows.map(row => [row.member_id, row.hash])),
     }
     return snapshotOf(Number(meta?.version ?? 1), data)

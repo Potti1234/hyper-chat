@@ -1,7 +1,7 @@
 import { Data, Effect } from 'effect'
 
 import { activityOf } from './activity'
-import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Read, canRead, channelSlug, inChannel, isMemberOf } from './domain'
+import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Read, type Saved, type SavedState, canRead, channelSlug, inChannel, isMemberOf } from './domain'
 import { isEmoji } from './emoji'
 
 /* The workspace's data and every change to it, as pure operations: an
@@ -16,11 +16,12 @@ export type WorkspaceData = Readonly<{
   channels: ReadonlyArray<Channel>
   messages: ReadonlyArray<Message>
   reads: ReadonlyArray<Read>
+  saves: ReadonlyArray<Saved>
   /** Password hashes by member id. They never leave the store. */
   passwords: Readonly<Record<string, string>>
 }>
 
-export const emptyData: WorkspaceData = { members: [], channels: [], messages: [], reads: [], passwords: {} }
+export const emptyData: WorkspaceData = { members: [], channels: [], messages: [], reads: [], saves: [], passwords: {} }
 
 export class InvalidChange extends Data.TaggedError('InvalidChange')<{ readonly reason: string }> {}
 
@@ -276,7 +277,61 @@ export const deleteMessage =
     Effect.gen(function* () {
       const message = yield* findMessage(data, messageId)
       if (message.authorId !== actorId) return yield* invalid('You can only delete your own messages.')
-      return [undefined, { ...data, messages: data.messages.filter(candidate => candidate !== message && candidate.threadId !== message.id) }] as const
+      const messages = data.messages.filter(candidate => candidate !== message && candidate.threadId !== message.id)
+      const gone = new Set(data.messages.filter(candidate => !messages.includes(candidate)).map(candidate => candidate.id))
+      const saves = data.saves.some(saved => gone.has(saved.messageId)) ? data.saves.filter(saved => !gone.has(saved.messageId)) : data.saves
+      return [undefined, { ...data, messages, saves }] as const
+    })
+
+/** Saves a message for later, or takes it out of Later. True if it is saved now. */
+export const toggleSaved =
+  (messageId: string, memberId: string): Op<boolean, InvalidChange> =>
+  (data, { at }) =>
+    Effect.gen(function* () {
+      const message = yield* findMessage(data, messageId)
+      const channel = yield* findChannel(data, message.channelId)
+      if (!canRead(channel, memberId) || !data.members.some(member => member.id === memberId)) return yield* invalid('That message was deleted.')
+      const current = data.saves.find(saved => saved.memberId === memberId && saved.messageId === messageId)
+      if (current?.state === 'saved') return [false, { ...data, saves: data.saves.filter(saved => saved !== current) }] as const
+      const next: Saved = { memberId, messageId, state: 'saved', at }
+      return [true, { ...data, saves: current === undefined ? [...data.saves, next] : data.saves.map(saved => (saved === current ? next : saved)) }] as const
+    })
+
+/** Marks a saved message completed, or back in progress. */
+export const setSavedState =
+  (messageId: string, memberId: string, state: SavedState): Op<void, InvalidChange> =>
+  (data, { at }) =>
+    Effect.gen(function* () {
+      const current = data.saves.find(saved => saved.memberId === memberId && saved.messageId === messageId)
+      if (current === undefined) return yield* invalid('That item is no longer saved.')
+      if (current.state === state) return [undefined, data] as const
+      return [undefined, { ...data, saves: data.saves.map(saved => (saved === current ? { ...current, state, at } : saved)) }] as const
+    })
+
+/** Removes a message from Later, in progress or completed. */
+export const removeSaved =
+  (messageId: string, memberId: string): Op<void> =>
+  data => {
+    const saves = data.saves.filter(saved => !(saved.memberId === memberId && saved.messageId === messageId))
+    return unchanged(undefined, saves.length === data.saves.length ? data : { ...data, saves })
+  }
+
+/** Pins a message to its conversation, or un-pins it. Members do this,
+ *  for messages shown in the conversation. True if it is pinned now. */
+export const togglePin =
+  (messageId: string, actorId: string): Op<boolean, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      const message = yield* findMessage(data, messageId)
+      const channel = yield* findChannel(data, message.channelId)
+      if (!isMemberOf(channel, actorId)) return yield* invalid('Join this conversation to pin messages.')
+      if (channel.isArchived) return yield* invalid('This channel is archived.')
+      if (!inChannel(message)) return yield* invalid('Pin messages in the conversation itself.')
+      if (message.pinnedBy !== undefined) {
+        const { pinnedBy: _, ...unpinned } = message
+        return [false, replaceMessage(data, message, unpinned)] as const
+      }
+      return [true, replaceMessage(data, message, { ...message, pinnedBy: actorId })] as const
     })
 
 /** Adds your reaction, or takes it back if it is there. Members of the
@@ -364,6 +419,7 @@ export const addDemo =
         channels: [...data.channels, ...demo.channels],
         messages: [...data.messages, ...demo.messages],
         reads: [...data.reads, ...demo.reads],
+        saves: [...data.saves, ...demo.saves],
         passwords: { ...data.passwords, ...demo.passwords },
       },
     ] as const)
@@ -375,12 +431,14 @@ export const clearDemo = (): Op<DemoCounts> => data => {
   const channels = data.channels.filter(channel => !channel.isDemo)
   const channelIds = new Set(channels.map(channel => channel.id))
   const messages = data.messages.filter(message => !message.isDemo && channelIds.has(message.channelId) && !demoMembers.has(message.authorId))
+  const messageIds = new Set(messages.map(message => message.id))
   const counts = { members: demoMembers.size, channels: data.channels.length - channels.length, messages: data.messages.length - messages.length }
   return unchanged(counts, {
     members: data.members.filter(member => !member.isDemo),
     channels: channels.map(channel => (channel.memberIds.some(id => demoMembers.has(id)) ? { ...channel, memberIds: channel.memberIds.filter(id => !demoMembers.has(id)) } : channel)),
     messages,
     reads: data.reads.filter(read => !demoMembers.has(read.memberId) && (channelIds.has(read.channelId) || read.channelId === ACTIVITY_READ)),
+    saves: data.saves.filter(saved => !demoMembers.has(saved.memberId) && messageIds.has(saved.messageId)),
     passwords: Object.fromEntries(Object.entries(data.passwords).filter(([id]) => !demoMembers.has(id))),
   })
 }

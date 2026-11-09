@@ -71,6 +71,8 @@ export const buttonVariants = cva(
         // A filter tab above a list (All channels, Your channels, Archived).
         tab: 'text-muted-foreground hover:bg-muted hover:text-foreground',
         'tab-active': 'bg-muted text-foreground',
+        // A tab under the conversation header (Pins) that opens a list.
+        'conversation-tab': 'mb-1 text-muted-foreground hover:bg-muted hover:text-foreground',
         // The composer's send button: grey until there is something to send.
         send: 'bg-primary text-primary-foreground hover:bg-primary/90 data-[disabled]:bg-transparent data-[disabled]:text-muted-foreground data-[disabled]:opacity-100 aria-disabled:bg-transparent aria-disabled:text-muted-foreground aria-disabled:opacity-100',
       },

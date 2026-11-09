@@ -46,7 +46,7 @@ export type Where = typeof Where.Type
 
 // MODEL
 
-export const DetailsTab = S.Literals(['about', 'members', 'settings'])
+export const DetailsTab = S.Literals(['about', 'members', 'settings', 'pins'])
 export type DetailsTab = typeof DetailsTab.Type
 export const DetailsField = S.Literals(['name', 'topic', 'description'])
 export type DetailsField = typeof DetailsField.Type
@@ -58,6 +58,10 @@ export const Model = S.Struct({
   members: S.Array(Member),
   messages: S.Array(ChatMessage),
   older: S.Number,
+  /** Messages pinned to the conversation, newest first. */
+  pins: S.Array(ChatMessage),
+  /** Your messages saved for later (in progress) here. */
+  saved: S.Array(S.String),
   nav: Nav,
   now: S.Number,
   /** Read up to here when the page opened: the "New" line. */
@@ -111,6 +115,8 @@ export const Message = defineMessageUnion({
   ClickedEmoji: { emoji: S.String },
   ClickedMore: { messageId: S.String, where: Where },
   ClickedMarkUnread: { messageId: S.String },
+  ClickedSave: { messageId: S.String },
+  ClickedPin: { messageId: S.String },
   ClickedCloseOverlay: {},
   ClickedEdit: { messageId: S.String, where: Where },
   ClickedReplyInThread: { messageId: S.String },
@@ -130,7 +136,7 @@ export const Message = defineMessageUnion({
   SucceededEdit: {},
   SucceededDelete: {},
   ChangedConnection: { isConnected: S.Boolean },
-  GotChannel: { channel: S.NullOr(Channel), members: S.Array(Member), messages: S.Array(ChatMessage), older: S.Number, nav: Nav, me: Member, now: S.Number },
+  GotChannel: { channel: S.NullOr(Channel), members: S.Array(Member), messages: S.Array(ChatMessage), older: S.Number, pins: S.Array(ChatMessage), saved: S.Array(S.String), nav: Nav, me: Member, now: S.Number },
   SucceededSend: {},
   ClickedJoin: {},
   ClickedOpenDetails: { tab: DetailsTab, field: S.NullOr(DetailsField) },
@@ -165,6 +171,8 @@ export const ClientMessage = S.Union([
   Message.ClickedEmoji,
   Message.ClickedMore,
   Message.ClickedMarkUnread,
+  Message.ClickedSave,
+  Message.ClickedPin,
   Message.ClickedCloseOverlay,
   Message.ClickedEdit,
   Message.SubmittedEdit,
@@ -237,6 +245,26 @@ export const ToggleReaction = Command.define('ToggleReaction', {
   messages: [Message.CompletedChange, Message.FailedChange],
   execute: ({ messageId, emoji, actorId }) =>
     Workspace.use(workspace => workspace.toggleReaction(messageId, emoji, actorId)).pipe(
+      Effect.as(Message.CompletedChange()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const ToggleSaved = Command.define('ToggleSaved', {
+  args: { messageId: S.String, memberId: S.String },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ messageId, memberId }) =>
+    Workspace.use(workspace => workspace.toggleSaved(messageId, memberId)).pipe(
+      Effect.as(Message.CompletedChange()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const TogglePin = Command.define('TogglePin', {
+  args: { messageId: S.String, actorId: S.String },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ messageId, actorId }) =>
+    Workspace.use(workspace => workspace.togglePin(messageId, actorId)).pipe(
       Effect.as(Message.CompletedChange()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
@@ -347,6 +375,8 @@ export type Flags = Readonly<{
   members: ReadonlyArray<Member>
   messages: ReadonlyArray<ChatMessage>
   older: number
+  pins: ReadonlyArray<ChatMessage>
+  saved: ReadonlyArray<string>
   nav: Nav
   now: number
   readMarker: number
@@ -430,6 +460,9 @@ const sendReply = (model: Model): UpdateReturn => {
 const composerOf = (where: Where) => (where === 'thread' ? '#thread-composer' : '#composer')
 
 const ownMessage = (model: Model, messageId: string) => model.messages.find(message => message.id === messageId && message.authorId === model.me.id)
+
+/** A message shown in the conversation that you can pin. */
+const pinnable = (model: Model, messageId: string) => (canWrite(model) ? model.messages.find(message => message.id === messageId && inChannel(message)) : undefined)
 
 /** A message of the conversation you can mark unread from. */
 const unreadable = (model: Model, messageId: string) =>
@@ -563,6 +596,15 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
         // Stays unread while you look at it, until you open the conversation again.
         return { model: { ...model, overlay: null, readMarker: found.createdAt - 1, markedUpTo: Number.MAX_SAFE_INTEGER }, commands: [MarkUnread({ messageId, actorId: model.me.id })] }
       },
+      ClickedSave: ({ messageId }) => {
+        if (model.channel === null || !model.messages.some(message => message.id === messageId)) return { model }
+        const saved = model.saved.includes(messageId) ? model.saved.filter(id => id !== messageId) : [...model.saved, messageId]
+        return { model: { ...model, saved }, commands: [ToggleSaved({ messageId, memberId: model.me.id })] }
+      },
+      ClickedPin: ({ messageId }) =>
+        pinnable(model, messageId) === undefined && !model.pins.some(pin => pin.id === messageId)
+          ? { model }
+          : canWrite(model) ? { model: { ...model, overlay: null }, commands: [TogglePin({ messageId, actorId: model.me.id })] } : { model },
       ClickedCloseOverlay: () => ({ model: { ...model, overlay: null } }),
       ClickedEdit: ({ messageId, where }) => startEdit(model, messageId, where),
       ClickedReplyInThread: ({ messageId }) => openThread(model, messageId),
@@ -600,7 +642,7 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       },
       SucceededJoin: () => ({ model: withFocus({ ...model, isJoining: false }, '#composer') }),
       ClickedOpenDetails: ({ tab, field }) => {
-        if (model.channel === null || model.channel.kind === 'dm') return { model }
+        if (model.channel === null || (model.channel.kind === 'dm' && tab !== 'pins')) return { model }
         const opened = withDetails({ ...model, overlay: null, about: { ...closedAbout, tab } }, Dialog.open(model.details))
         return field === null ? opened : { ...opened, model: editField(opened.model, field) }
       },
@@ -654,7 +696,12 @@ export const update = (model: Model, message: Message): UpdateReturn => {
 
 // SUBSCRIPTION
 
-type Slice = Readonly<{ channel: Channel | null; members: ReadonlyArray<Member>; messages: ReadonlyArray<ChatMessage>; older: number; nav: Nav; me: Member | null }>
+type Slice = Readonly<{ channel: Channel | null; members: ReadonlyArray<Member>; messages: ReadonlyArray<ChatMessage>; older: number; pins: ReadonlyArray<ChatMessage>; saved: ReadonlyArray<string>; nav: Nav; me: Member | null }>
+
+const savedIn = (state: WorkspaceState, messages: ReadonlyArray<ChatMessage>, memberId: string): ReadonlyArray<string> => {
+  const ids = new Set(messages.map(message => message.id))
+  return state.saves.filter(saved => saved.memberId === memberId && saved.state === 'saved' && ids.has(saved.messageId)).map(saved => saved.messageId)
+}
 
 export const sliceOf = (state: WorkspaceState, channelId: string, memberId: string): Slice => {
   const me = state.members.find(member => member.id === memberId) ?? null
@@ -669,6 +716,8 @@ export const sliceOf = (state: WorkspaceState, channelId: string, memberId: stri
     members: state.members,
     messages: all.filter(message => shown.has(message.id) || (message.threadId !== null && shown.has(message.threadId))),
     older: Math.max(0, listed.length - SHOWN),
+    pins: listed.filter(message => message.pinnedBy !== undefined).reverse(),
+    saved: channel === null ? [] : savedIn(state, all, memberId),
     nav: me === null ? emptyNav : navOf(state, me),
     me,
   }
@@ -676,7 +725,7 @@ export const sliceOf = (state: WorkspaceState, channelId: string, memberId: stri
 
 const sameItems = <A>(a: ReadonlyArray<A>, b: ReadonlyArray<A>) => a.length === b.length && a.every((item, index) => item === b[index])
 
-const sameSlice = (a: Slice, b: Slice) => a.channel === b.channel && a.members === b.members && sameItems(a.messages, b.messages) && sameNav(a.nav, b.nav) && a.me === b.me
+const sameSlice = (a: Slice, b: Slice) => a.channel === b.channel && a.members === b.members && sameItems(a.messages, b.messages) && sameItems(a.pins, b.pins) && a.saved.join() === b.saved.join() && sameNav(a.nav, b.nav) && a.me === b.me
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
   channel: entry(
@@ -776,6 +825,7 @@ const toolbarView = (model: Model, message: ChatMessage, where: Where, h: HtmlBu
               : []),
           ]
         : []),
+      button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: model.saved.includes(message.id) ? 'Remove from saved items' : 'Save for later', title: model.saved.includes(message.id) ? 'Remove from saved items' : 'Save for later', isPressed: model.saved.includes(message.id), onClick: Message.ClickedSave({ messageId: message.id }), children: [Icon.bookmark({ class: model.saved.includes(message.id) ? 'fill-current' : '' }, h)] }, h),
       ...(isMine ? [button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Edit message', title: 'Edit message', onClick: Message.ClickedEdit({ messageId: message.id, where }), children: [Icon.icon('pencil', {}, h)] }, h)] : []),
       ...(isMine || (where === 'channel' && unreadable(model, message.id) !== undefined)
         ? [
@@ -835,6 +885,8 @@ const messageView = (model: Model, message: ChatMessage, isFirst: boolean, where
   const author = model.members.find(member => member.id === message.authorId)
   const editing = model.editing !== null && model.editing.id === message.id && model.editing.where === where ? model.editing : null
   const isActive = model.overlay !== null && model.overlay.messageId === message.id && model.overlay.where === where
+  const isSaved = model.saved.includes(message.id)
+  const pinner = message.pinnedBy === undefined || where === 'thread' ? undefined : (model.members.find(member => member.id === message.pinnedBy)?.name ?? 'Someone')
   return box({ as: 'li', class: slack.messageRow, attributes: [
       h.Key(message.id),
       h.Id(`${where === 'thread' ? 'thread-' : ''}message-${message.id}`),
@@ -842,7 +894,14 @@ const messageView = (model: Model, message: ChatMessage, isFirst: boolean, where
       ...(isFirst && editing === null ? [] : [h.DataAttribute('continued', '')]),
       ...(isActive ? [h.DataAttribute('active', '')] : []),
       ...(editing === null ? [] : [h.DataAttribute('editing', '')]),
+      ...(isSaved || pinner !== undefined ? [h.DataAttribute('highlight', '')] : []),
     ], children: [
+      ...(isSaved || pinner !== undefined
+        ? [box({ class: slack.messageLabels, children: [
+            ...(pinner === undefined ? [] : [box({ as: 'span', class: 'flex items-center gap-1', attributes: [h.DataAttribute('pinned-label', '')], children: [Icon.icon('pin', { class: 'size-3' }, h), `Pinned by ${pinner}`] }, h)]),
+            ...(isSaved ? [box({ as: 'span', class: 'flex items-center gap-1 text-link', attributes: [h.DataAttribute('saved-label', '')], children: [Icon.bookmark({ class: 'size-3 fill-current' }, h), 'Saved for later'] }, h)] : []),
+          ] }, h)]
+        : []),
       box({ class: slack.messageGutter, children: isFirst ? [avatar(author, h, 'md')] : [box({ as: 'span', class: slack.messageHoverTime, children: [formatTime(message.createdAt)] }, h)] }, h),
       box({ class: 'min-w-0 flex-1', children: [
           ...(where === 'channel' && message.threadId !== null ? [repliedToView(model, message, h)] : []),
@@ -889,6 +948,9 @@ const actionsMenu = (model: Model, messageId: string, where: Where, anchor: stri
   return box({ class: 'z-50 flex w-56 flex-col rounded-lg border bg-popover p-1 text-popover-foreground shadow-[0_8px_30px_rgb(0_0_0/0.12)]', style: anchoredStyle(anchor, { side: 'bottom', align: 'end' }), attributes: [h.Id('message-menu'), h.Role('menu'), h.AriaLabel('Message actions')], children: [
       ...(where === 'channel' && unreadable(model, messageId) !== undefined
         ? [optionRow({ id: 'menu-unread', value: 'unread', isActive: false, onClick: Message.ClickedMarkUnread({ messageId }), children: [Icon.icon('mail', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Mark unread'] }, h)] }, h)]
+        : []),
+      ...(where === 'channel' && pinnable(model, messageId) !== undefined
+        ? [optionRow({ id: 'menu-pin', value: 'pin', isActive: false, onClick: Message.ClickedPin({ messageId }), children: [Icon.icon(model.pins.some(pin => pin.id === messageId) ? 'x' : 'pin', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: [model.pins.some(pin => pin.id === messageId) ? 'Un-pin from this conversation' : 'Pin to this conversation'] }, h)] }, h)]
         : []),
       ...(isMine ? [optionRow({ id: 'menu-edit', value: 'edit', isActive: false, onClick: Message.ClickedEdit({ messageId, where }), children: [Icon.icon('pencil', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Edit message'] }, h)] }, h),
       optionRow({ id: 'menu-delete', value: 'delete', isActive: false, onClick: Message.ClickedDelete({ messageId }), children: [Icon.icon('trash-2', { class: 'size-4 text-destructive' }, h), box({ as: 'span', class: 'flex-1 text-destructive', children: ['Delete message…'] }, h)] }, h)] : []),
@@ -947,9 +1009,24 @@ const membersTab = (model: Model, channel: Channel, h: HtmlBuilder<Message>): Ht
     ] }, h)
 }
 
+const pinsTab = (model: Model, h: HtmlBuilder<Message>): Html =>
+  box({ as: 'ul', class: 'flex max-h-[360px] flex-col gap-2 overflow-y-auto', attributes: [h.Id('pinned-messages'), h.AriaLabel('Pinned messages')], children: model.pins.length === 0
+      ? [box({ as: 'li', class: 'py-6 text-center text-[14px] text-muted-foreground', children: ['Nothing is pinned yet. Pin a message from its ⋮ menu.'] }, h)]
+      : model.pins.map(pin => {
+          const author = model.members.find(member => member.id === pin.authorId)
+          return box({ as: 'li', class: 'flex gap-2 rounded-lg border p-3', attributes: [h.DataAttribute('pin', pin.id)], children: [
+              avatar(author, h, 'md'),
+              box({ class: 'min-w-0 flex-1', children: [
+                  box({ class: 'flex items-baseline gap-2', children: [box({ as: 'strong', class: 'text-[14px] font-bold', children: [author?.name ?? 'Former member'] }, h), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(pin.createdAt, model.now)} at ${formatTime(pin.createdAt)}`] }, h)] }, h),
+                  box({ class: slack.messageText, children: messageText(pin.text, model.members, h) }, h),
+                ] }, h),
+              ...(canWrite(model) ? [button({ variant: 'ghost', size: 'icon-sm', ariaLabel: 'Un-pin', title: 'Un-pin', onClick: Message.ClickedPin({ messageId: pin.id }), children: [Icon.icon('x', {}, h)] }, h)] : []),
+            ] }, h)
+        }) }, h)
+
 const detailsDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
   const channel = model.channel
-  if (channel === null || channel.kind === 'dm') return box({}, h)
+  if (channel === null) return box({}, h)
   const creator = model.members.find(member => member.id === channel.createdBy)
   const isMember = isMemberOf(channel, model.me.id)
   const tab = (id: DetailsTab, label: string) =>
@@ -957,11 +1034,13 @@ const detailsDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
   return Dialog.dialog({
     model: model.details,
     toParentMessage: message => Message.GotDetailsDialog({ message }),
-    title: `${channel.kind === 'private' ? '' : '#'}${channel.name}`,
+    title: channel.kind === 'dm' ? titleOf(model) : `${channel.kind === 'private' ? '' : '#'}${channel.name}`,
     content: slots => [
       box({ class: 'flex flex-col gap-4', attributes: [h.Id('details-body')], children: [
-          box({ class: 'flex items-center gap-1', attributes: [h.AriaLabel('Details tabs')], children: [tab('about', 'About'), tab('members', `Members ${channel.memberIds.length}`), ...(isMember ? [tab('settings', 'Settings')] : [])] }, h),
-          model.about.tab === 'members'
+          box({ class: 'flex items-center gap-1', attributes: [h.AriaLabel('Details tabs')], children: channel.kind === 'dm' ? [tab('pins', `Pins ${model.pins.length}`)] : [tab('about', 'About'), tab('members', `Members ${channel.memberIds.length}`), ...(model.pins.length === 0 ? [] : [tab('pins', `Pins ${model.pins.length}`)]), ...(isMember ? [tab('settings', 'Settings')] : [])] }, h),
+          model.about.tab === 'pins' || channel.kind === 'dm'
+            ? pinsTab(model, h)
+            : model.about.tab === 'members'
             ? membersTab(model, channel, h)
             : model.about.tab === 'settings' && isMember
               ? box({ class: 'flex flex-col gap-2', children: channel.name === DEFAULT_CHANNEL
@@ -1037,6 +1116,7 @@ const messageRegion = (model: Model, message: ChatMessage, isFirst: boolean, whe
       model.thread?.id === message.id,
       message.threadId === null ? null : model.messages.find(candidate => candidate.id === message.threadId)?.text,
       model.now,
+      model.saved.includes(message.id),
     ],
     render: () => messageView(model, message, isFirst, where, summary, h),
   })
@@ -1127,6 +1207,9 @@ const headerView = (model: Model, h: HtmlBuilder<Message>): Html => {
         ] }, h),
       box({ as: 'nav', class: 'flex h-9 items-end gap-4 px-4 text-[13px]', attributes: [h.AriaLabel('Conversation tabs')], children: [
           box({ as: 'span', class: 'flex items-center gap-1.5 border-b-2 border-foreground pb-2 font-semibold', attributes: [h.AriaCurrent('page')], children: [Icon.icon('message-circle', { class: 'size-4' }, h), 'Messages'] }, h),
+          ...(channel === null || model.pins.length === 0
+            ? []
+            : [button({ id: 'open-pins', variant: 'conversation-tab', size: 'xs', onClick: Message.ClickedOpenDetails({ tab: 'pins', field: null }), leadingIcon: Icon.icon('pin', { class: 'size-4' }, h), children: [`Pins ${model.pins.length}`] }, h)]),
         ] }, h),
     ] }, h)
 }
@@ -1165,11 +1248,11 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
             render: () => sidebar({ nav: model.nav, members: model.members, activeId: model.channelId, collapsed: model.collapsed, onToggleSection: section => Message.ClickedToggleSection({ section }) }, h),
           }),
           box({ as: 'main', class: slack.main, attributes: model.thread === null ? [] : [h.DataAttribute('split', '')], children: [
-              region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id], render: () => headerView(model, h) }),
-              region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id], render: () => listView(model, h) }),
+              region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id, model.pins.length], render: () => headerView(model, h) }),
+              region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id, model.saved, model.pins], render: () => listView(model, h) }),
               region(h, { id: 'composer-area', deps: [model.draft, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
             ] }, h),
-          region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now], render: () => threadView(model, h) }),
+          region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now, model.saved], render: () => threadView(model, h) }),
         ] }, h),
       region(h, {
         id: 'keys',
@@ -1185,7 +1268,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
             ] }, h),
       }),
       region(h, { id: 'overlay', deps: [model.overlay, model.emojiQuery], render: () => overlayView(model, h) }),
-      region(h, { id: 'details', deps: [model.details, model.about, model.channel, model.members, model.me.id], render: () => box({ attributes: [h.Id('details')], children: [detailsDialog(model, h)] }, h) }),
+      region(h, { id: 'details', deps: [model.details, model.about, model.channel, model.members, model.me.id, model.pins, model.now], render: () => box({ attributes: [h.Id('details')], children: [detailsDialog(model, h)] }, h) }),
       region(h, { id: 'confirm', deps: [model.confirm, model.deleting, model.messages, model.members], render: () => box({ attributes: [h.Id('confirm')], children: [confirmDialog(model, h)] }, h) }),
       region(h, {
         id: 'notice',
@@ -1229,7 +1312,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
       const now = yield* Clock.currentTimeMillis
       const asked = request.params['thread']
       const threadId = slice.messages.some(message => message.id === asked && message.threadId === null) ? (asked ?? null) : null
-      return { me, channelId, channel: slice.channel, members: slice.members, messages: slice.messages, older: slice.older, nav: slice.nav, now, readMarker: readAt(state.reads, me.id, channelId), threadId }
+      return { me, channelId, channel: slice.channel, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, saved: slice.saved, nav: slice.nav, now, readMarker: readAt(state.reads, me.id, channelId), threadId }
     }),
   init,
   update,

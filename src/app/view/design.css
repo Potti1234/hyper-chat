@@ -27,6 +27,9 @@
   /* Messages: Slack's 15 px text, hover tint, compact follow-ups. */
   .message-row { position: relative; display: flex; gap: 8px; padding: 8px 20px; font-size: 15px; line-height: 22px; }
   .message-row[data-continued] { padding-top: 2px; padding-bottom: 2px; }
+  .message-row[data-highlight] { flex-wrap: wrap; background: color-mix(in oklab, var(--warning) 14%, transparent); }
+  @media (hover: hover) { .message-row[data-highlight]:hover { background: color-mix(in oklab, var(--warning) 20%, transparent); } }
+  .message-labels { display: flex; width: 100%; gap: 12px; padding-left: 44px; font-size: 12px; line-height: 18px; color: var(--muted-foreground); }
   @media (hover: hover) { .message-row:hover { background: color-mix(in oklab, var(--foreground) 4%, transparent); } }
   .message-gutter { display: flex; width: 36px; flex-shrink: 0; justify-content: center; }
   .message-hover-time { visibility: hidden; padding-top: 2px; font-size: 12px; line-height: 20px; color: var(--muted-foreground); }

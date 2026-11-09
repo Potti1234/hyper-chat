@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { Clock, Context, Effect, Layer, Semaphore, Stream, SubscriptionRef } from 'effect'
 
-import type { Channel, Member, Message, Read } from './domain'
+import type { Channel, Member, Message, Read, Saved, SavedState } from './domain'
 import { hashPassword, verifyPassword } from './password'
 import {
   type ChannelDetails,
@@ -23,7 +23,11 @@ import {
   updateChannel,
   markRead,
   markUnread,
+  removeSaved,
   seeActivity,
+  setSavedState,
+  togglePin,
+  toggleSaved,
   openConversation,
   editMessage,
   deleteMessage,
@@ -48,6 +52,7 @@ export type WorkspaceState = Readonly<{
   channels: ReadonlyArray<Channel>
   messages: ReadonlyArray<Message>
   reads: ReadonlyArray<Read>
+  saves: ReadonlyArray<Saved>
 }>
 
 /** The data at one version, and the state pages see (without passwords). */
@@ -56,7 +61,7 @@ export type Snapshot = Readonly<{ version: number; data: WorkspaceData; state: W
 export const snapshotOf = (version: number, data: WorkspaceData): Snapshot => ({
   version,
   data,
-  state: { version, members: data.members, channels: data.channels, messages: data.messages, reads: data.reads },
+  state: { version, members: data.members, channels: data.channels, messages: data.messages, reads: data.reads, saves: data.saves },
 })
 
 export type Backend = Readonly<{
@@ -91,6 +96,10 @@ export class Workspace extends Context.Service<
     readonly markRead: (channelId: string, memberId: string) => Effect.Effect<void>
     readonly markUnread: (messageId: string, actorId: string) => Effect.Effect<void, InvalidChange>
     readonly seeActivity: (memberId: string) => Effect.Effect<void>
+    readonly toggleSaved: (messageId: string, memberId: string) => Effect.Effect<boolean, InvalidChange>
+    readonly setSavedState: (messageId: string, memberId: string, state: SavedState) => Effect.Effect<void, InvalidChange>
+    readonly removeSaved: (messageId: string, memberId: string) => Effect.Effect<void>
+    readonly togglePin: (messageId: string, actorId: string) => Effect.Effect<boolean, InvalidChange>
     readonly editMessage: (messageId: string, text: string, actorId: string) => Effect.Effect<Message, InvalidChange>
     readonly deleteMessage: (messageId: string, actorId: string) => Effect.Effect<void, InvalidChange>
     readonly toggleReaction: (messageId: string, emoji: string, actorId: string) => Effect.Effect<void, InvalidChange>
@@ -130,6 +139,10 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
   markRead: (channelId, memberId) => backend.run(markRead(channelId, memberId)),
   markUnread: (messageId, actorId) => backend.run(markUnread(messageId, actorId)),
   seeActivity: memberId => backend.run(seeActivity(memberId)),
+  toggleSaved: (messageId, memberId) => backend.run(toggleSaved(messageId, memberId)),
+  setSavedState: (messageId, memberId, state) => backend.run(setSavedState(messageId, memberId, state)),
+  removeSaved: (messageId, memberId) => backend.run(removeSaved(messageId, memberId)),
+  togglePin: (messageId, actorId) => backend.run(togglePin(messageId, actorId)),
   editMessage: (messageId, text, actorId) => backend.run(editMessage(messageId, text, actorId)),
   deleteMessage: (messageId, actorId) => backend.run(deleteMessage(messageId, actorId)),
   toggleReaction: (messageId, emoji, actorId) => backend.run(toggleReaction(messageId, emoji, actorId)),

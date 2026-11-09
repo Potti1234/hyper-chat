@@ -159,6 +159,8 @@ export const Message = S.Struct({
   threadId: S.NullOr(S.String),
   /** A reply also sent to the channel ("Also send to #channel"). */
   alsoInChannel: S.Boolean,
+  /** Who pinned it to the conversation. */
+  pinnedBy: S.optionalKey(S.String),
   isDemo: S.Boolean,
 })
 export type Message = typeof Message.Type
@@ -174,6 +176,16 @@ export type Read = typeof Read.Type
 
 /** The read marker of someone's Activity view (a Read with this as its channel). */
 export const ACTIVITY_READ = 'activity'
+
+/** Slack's Later: a message someone saved, in progress or completed. */
+export const SavedState = S.Literals(['saved', 'done'])
+export type SavedState = typeof SavedState.Type
+
+export const Saved = S.Struct({ memberId: S.String, messageId: S.String, state: SavedState, at: S.Number })
+export type Saved = typeof Saved.Type
+
+export const isSaved = (saves: ReadonlyArray<Saved>, memberId: string, messageId: string): boolean =>
+  saves.some(saved => saved.memberId === memberId && saved.messageId === messageId && saved.state === 'saved')
 
 export const readAt = (reads: ReadonlyArray<Read>, memberId: string, channelId: string): number =>
   reads.find(read => read.memberId === memberId && read.channelId === channelId)?.at ?? 0

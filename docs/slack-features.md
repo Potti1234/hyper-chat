@@ -77,8 +77,8 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Mentions | `@person`, `@channel`, `@here`; highlighted, yellow background when it mentions you | **done** |
 | Channel links | `#channel` links | **planned** |
 | Formatting | Bold `*x*`, italic `_x_`, strike `~x~`, `code`, code blocks, quotes `>`, lists, links; a formatting toolbar | **planned** |
-| Pins | Pin to channel, Pins tab | **planned** |
-| Save for later | Bookmark a message, Later view (in progress / done) | **planned** |
+| Pins | Pin to channel, Pins tab | **done** (Pins tab in the header and details, "Pinned by" label) |
+| Save for later | Bookmark a message, Later view (in progress / done) | **done** (Later page with In progress / Completed) |
 | Copy link | Link to a message | **planned** |
 | Mark unread | From the ⋮ menu: unread from here | **done** (also from the hover menu on others’ messages) |
 | Files | Upload in the composer (📎 / drop), image previews, Files tab | **planned** |

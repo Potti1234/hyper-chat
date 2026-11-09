@@ -91,6 +91,7 @@ export const slack = {
   main: 'slack-main',
   messageRow: 'message-row',
   messageGutter: 'message-gutter',
+  messageLabels: 'message-labels',
   messageHoverTime: 'message-hover-time',
   messageText: 'message-text',
   messageActions: 'message-actions',

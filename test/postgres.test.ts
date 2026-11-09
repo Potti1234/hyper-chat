@@ -18,14 +18,14 @@ const url = process.env['TEST_DATABASE_URL']
 
 const reset = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
-  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, passwords CASCADE`
+  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, saves, passwords CASCADE`
 }).pipe(Effect.provide(Postgres.clientLayerFor(url ?? '')))
 
 /** One store, as one app process would build it. */
 const store = Effect.map(Layer.build(Postgres.layer.pipe(Layer.provide(Postgres.clientLayerFor(url ?? '')))), context => Context.get(context, Workspace))
 
 describe.skipIf(url === undefined)('workspace in Postgres', () => {
-  it.live('delivers messages, threads, edits, reactions, reads and deletes to another process', () =>
+  it.live('delivers messages, threads, edits, reactions, reads, saves, pins and deletes to another process', () =>
     Effect.scoped(
       Effect.gen(function* () {
         yield* reset
@@ -39,8 +39,11 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         yield* one.editMessage(message.id, 'Persisted and edited', 'mem_avery')
         yield* one.toggleReaction(message.id, '🎉', 'mem_casey') // eslint-disable-line crease/no-native-glyphs -- reaction content
         yield* one.markRead('ch_general', 'mem_casey')
+        yield* one.toggleSaved(message.id, 'mem_casey')
+        yield* one.setSavedState(message.id, 'mem_casey', 'done')
+        yield* one.togglePin(message.id, 'mem_blake')
         yield* two.changes.pipe(
-          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1) && state.messages.some(item => item.id === reply.id)),
+          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1 && item.pinnedBy === 'mem_blake') && state.saves.some(saved => saved.messageId === message.id && saved.state === 'done') && state.messages.some(item => item.id === reply.id)),
           Stream.runHead,
           Effect.timeout('5 seconds'),
         )
@@ -49,6 +52,9 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         assert.isTrue(stored?.alsoInChannel)
         assert.strictEqual(after.messages.find(item => item.id === message.id)?.reactions[0]?.memberIds[0], 'mem_casey')
         assert.isTrue(after.reads.some(read => read.memberId === 'mem_casey' && read.channelId === 'ch_general'))
+        const restarted = yield* (yield* store).current
+        assert.strictEqual(restarted.messages.find(item => item.id === message.id)?.pinnedBy, 'mem_blake')
+        assert.isTrue(restarted.saves.some(saved => saved.memberId === 'mem_casey' && saved.messageId === message.id && saved.state === 'done'))
         yield* one.deleteMessage(message.id, 'mem_avery')
         yield* two.changes.pipe(Stream.filter(state => !state.messages.some(item => item.id === message.id || item.id === reply.id)), Stream.runHead, Effect.timeout('5 seconds'))
         // A third process starting now reads the same workspace from the tables.
@@ -56,6 +62,7 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         const fresh = yield* three.current
         assert.strictEqual(fresh.messages.length, (yield* two.current).messages.length)
         assert.isFalse(fresh.messages.some(item => item.id === reply.id))
+        assert.isFalse(fresh.saves.some(saved => saved.messageId === message.id))
       }),
     ),
   )

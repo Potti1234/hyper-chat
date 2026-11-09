@@ -1,7 +1,7 @@
 /* eslint-disable crease/no-native-glyphs -- emoji here are message text the demo people wrote, not interface icons */
 import { Effect } from 'effect'
 
-import { AVATAR_COLORS, type Channel, type ChannelKind, type Member, type Message, type Read, emailFor, firstName } from './domain'
+import { AVATAR_COLORS, type Channel, type ChannelKind, type Member, type Message, type Read, type Saved, emailFor, firstName } from './domain'
 import { hashPassword } from './password'
 import type { WorkspaceData } from './workspace'
 
@@ -78,6 +78,9 @@ const REPLIES: ReadonlyArray<readonly [number, string, number, string, boolean?]
 ]
 
 /** [channel, author, minutes ago, text] */
+/** Pinned messages (by their number in SCRIPT) and who pinned them. */
+const PINNED: Readonly<Record<number, string>> = { 8: 'blake' }
+
 const SCRIPT: ReadonlyArray<readonly [string, string, number, string]> = [
   ['ch_general', 'avery', 4 * 1440 + 600, 'Good morning everyone! Reminder that the all-hands is moved to Thursday this week.'],
   ['ch_general', 'gray', 4 * 1440 + 590, 'Thanks Avery! Will there be a recording for the folks in other time zones?'],
@@ -151,6 +154,7 @@ export const demoData = (now: number): WorkspaceData => {
     reactions: (REACTIONS[index + 1] ?? []).map(([emoji, people]) => ({ emoji, memberIds: people.map(key => `mem_${key}`) })),
     threadId: null,
     alsoInChannel: false,
+    ...(PINNED[index + 1] === undefined ? {} : { pinnedBy: `mem_${PINNED[index + 1]}` }),
     isDemo: true,
   }))
   const replies: ReadonlyArray<Message> = REPLIES.map(([parent, author, minutesAgo, text, alsoInChannel], index) => ({
@@ -170,5 +174,6 @@ export const demoData = (now: number): WorkspaceData => {
   const reads: ReadonlyArray<Read> = channels.flatMap(channel =>
     channel.memberIds.map(memberId => ({ memberId, channelId: channel.id, at: now - 120 * minute })),
   )
-  return { members: DEMO_MEMBERS, channels, messages, reads, passwords: {} }
+  const saves: ReadonlyArray<Saved> = [{ memberId: 'mem_avery', messageId: 'msg_demo_6', state: 'saved', at: now - 60 * minute }]
+  return { members: DEMO_MEMBERS, channels, messages, reads, saves, passwords: {} }
 }
