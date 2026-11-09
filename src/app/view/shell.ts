@@ -5,7 +5,8 @@ import * as Icon from '@/lib/icon'
 import { badge } from '@/ui/badge'
 import { button, buttonLink } from '@/ui/button'
 
-import { type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, mentions, readAt } from '../domain'
+import { activityOf, unseenCount } from '../activity'
+import { ACTIVITY_READ, type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, mentions, readAt } from '../domain'
 import type { WorkspaceState } from '../store'
 import { box, slack } from './design'
 import { avatar, workspaceIcon } from './icons'
@@ -27,8 +28,11 @@ export const NavRow = S.Struct({
 })
 export type NavRow = typeof NavRow.Type
 
-export const Nav = S.Struct({ channels: S.Array(NavRow), dms: S.Array(NavRow) })
+/** Your conversations, and how many Activity items you have not seen. */
+export const Nav = S.Struct({ channels: S.Array(NavRow), dms: S.Array(NavRow), activity: S.Number })
 export type Nav = typeof Nav.Type
+
+export const emptyNav: Nav = { channels: [], dms: [], activity: 0 }
 
 const navRow = (state: WorkspaceState, channel: Channel, me: Member): NavRow => {
   const seen = readAt(state.reads, me.id, channel.id)
@@ -53,13 +57,14 @@ export const navOf = (state: WorkspaceState, me: Member): Nav => {
       .filter(channel => channel.kind === 'dm')
       .map(channel => navRow(state, channel, me))
       .sort((a, b) => a.label.localeCompare(b.label)),
+    activity: unseenCount(activityOf(state, me), readAt(state.reads, me.id, ACTIVITY_READ)),
   }
 }
 
 const sameRow = (a: NavRow, b: NavRow) =>
   a.id === b.id && a.label === b.label && a.kind === b.kind && a.isUnread === b.isUnread && a.mentions === b.mentions && a.partnerIds.join() === b.partnerIds.join()
 const sameRows = (a: ReadonlyArray<NavRow>, b: ReadonlyArray<NavRow>) => a.length === b.length && a.every((row, index) => sameRow(row, b[index] as NavRow))
-export const sameNav = (a: Nav, b: Nav): boolean => sameRows(a.channels, b.channels) && sameRows(a.dms, b.dms)
+export const sameNav = (a: Nav, b: Nav): boolean => a.activity === b.activity && sameRows(a.channels, b.channels) && sameRows(a.dms, b.dms)
 
 export const hasUnread = (nav: Nav): boolean => [...nav.channels, ...nav.dms].some(row => row.isUnread)
 
@@ -71,17 +76,17 @@ type RailProps<Msg> = Readonly<{
   me: Member
   active: RailItem
   onToggleTheme: Msg
-  hasUnread: boolean
+  nav: Nav
 }>
 
-const railLink = <Msg>(item: Readonly<{ href: string; label: string; icon: Html; isActive: boolean; dot?: boolean }>, h: HtmlBuilder<Msg>): Html =>
+const railLink = <Msg>(item: Readonly<{ href: string; label: string; icon: Html; isActive: boolean; dot?: boolean; count?: number }>, h: HtmlBuilder<Msg>): Html =>
   buttonLink(
     {
       href: item.href,
       variant: item.isActive ? 'rail-active' : 'rail',
       size: 'rail',
       ariaLabel: item.label,
-      children: [box({ as: 'span', class: 'rail-icon', attributes: [h.DataAttribute('slot', 'rail-icon')], children: [item.icon, ...(item.dot === true ? [box({ as: 'span', class: slack.railDot }, h)] : [])] }, h), item.label],
+      children: [box({ as: 'span', class: 'rail-icon', attributes: [h.DataAttribute('slot', 'rail-icon')], children: [item.icon, ...(item.dot === true ? [box({ as: 'span', class: slack.railDot }, h)] : []), ...(item.count !== undefined && item.count > 0 ? [badge({ variant: 'rail-count', children: [item.count > 99 ? '99+' : String(item.count)] }, h)] : [])] }, h), item.label],
     },
     h,
   )
@@ -89,9 +94,9 @@ const railLink = <Msg>(item: Readonly<{ href: string; label: string; icon: Html;
 export const rail = <Msg>(props: RailProps<Msg>, h: HtmlBuilder<Msg>): Html =>
   box({ as: 'nav', class: slack.rail, attributes: [h.Id('rail'), h.AriaLabel('Workspace')], children: [
       box({ as: 'a', class: 'mb-3', attributes: [h.Href('/'), h.Title(WORKSPACE_NAME)], children: [workspaceIcon(WORKSPACE_NAME, h)] }, h),
-      railLink({ href: '/', label: 'Home', icon: Icon.house({}, h), isActive: props.active === 'home', dot: props.active !== 'home' && props.hasUnread }, h),
+      railLink({ href: '/', label: 'Home', icon: Icon.house({}, h), isActive: props.active === 'home', dot: props.active !== 'home' && hasUnread(props.nav) }, h),
       railLink({ href: '/dms', label: 'DMs', icon: Icon.icon('messages-square', {}, h), isActive: props.active === 'dms' }, h),
-      railLink({ href: '/activity', label: 'Activity', icon: Icon.icon('bell', {}, h), isActive: props.active === 'activity' }, h),
+      railLink({ href: '/activity', label: 'Activity', icon: Icon.icon('bell', {}, h), isActive: props.active === 'activity', count: props.active === 'activity' ? 0 : props.nav.activity }, h),
       railLink({ href: '/later', label: 'Later', icon: Icon.bookmark({}, h), isActive: props.active === 'later' }, h),
       box({ class: 'flex-1' }, h),
       button({ variant: 'sidebar-icon', size: 'icon', ariaLabel: props.me.isDark ? 'Light mode' : 'Dark mode', title: props.me.isDark ? 'Light mode' : 'Dark mode', onClick: props.onToggleTheme, children: [Icon.icon(props.me.isDark ? 'sun' : 'moon', {}, h)] }, h),

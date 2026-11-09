@@ -73,14 +73,14 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Reactions | Emoji picker, reaction pills with counts, hover lists who reacted | **planned** |
 | Hover toolbar | ✅ 👀 🙌 quick reactions, add reaction, reply in thread, forward, save for later, ⋮ | **planned** |
 | Threads | "Reply in thread" opens the thread pane; "N replies" row with avatars and last reply time; "Also send to #channel" checkbox | **planned** |
-| Threads view | All threads you are part of, unread first | **planned** |
-| Mentions | `@person`, `@channel`, `@here`; highlighted, yellow background when it mentions you | **planned** |
+| Threads view | All threads you are part of, unread first | **done** |
+| Mentions | `@person`, `@channel`, `@here`; highlighted, yellow background when it mentions you | **done** |
 | Channel links | `#channel` links | **planned** |
 | Formatting | Bold `*x*`, italic `_x_`, strike `~x~`, `code`, code blocks, quotes `>`, lists, links; a formatting toolbar | **planned** |
 | Pins | Pin to channel, Pins tab | **planned** |
 | Save for later | Bookmark a message, Later view (in progress / done) | **planned** |
 | Copy link | Link to a message | **planned** |
-| Mark unread | From the ⋮ menu: unread from here | **planned** |
+| Mark unread | From the ⋮ menu: unread from here | **done** (also from the hover menu on others’ messages) |
 | Files | Upload in the composer (📎 / drop), image previews, Files tab | **planned** |
 | Typing indicator | "Alex is typing…" under the composer | **planned** |
 | Scheduled messages, reminders | Send later, "Remind me about this" | **planned** (later) |
@@ -93,8 +93,8 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 
 | Feature | Slack | hyper-chat |
 | --- | --- | --- |
-| Unreads | Bold rows, red mention pills, "All unreads" view | **planned** |
-| Activity | Mentions, reactions to your messages, thread replies | **planned** |
+| Unreads | Bold rows, red mention pills, "All unreads" view | **done** (bold rows, mention pills, Activity badge; no separate "All unreads" view yet) |
+| Activity | Mentions, reactions to your messages, thread replies | **done** (filters: all, mentions, threads, reactions; unreads only) |
 | Search | Messages, channels, people; modifiers `in:#x`, `from:@y`, `has:link`, before/after | **planned** |
 | Quick switcher | Ctrl/Cmd+K: jump to a channel or person | **planned** |
 | Keyboard shortcuts | Alt+↑/↓ previous/next channel, Esc marks read, ↑ edits your last message, Ctrl+/ shortcut list | **planned** |

@@ -23,6 +23,8 @@ export const badgeVariants = cva(
         link: 'text-primary underline-offset-4 hover:underline',
         // An unread mention count in the sidebar.
         count: 'h-[18px] min-w-[18px] justify-center rounded-full border-transparent bg-destructive px-1.5 text-[11px] font-bold text-white',
+        // The unseen Activity count on the workspace rail's bell.
+        'rail-count': 'absolute -top-1 -right-1.5 h-[18px] min-w-[18px] justify-center rounded-full border-2 border-sidebar bg-destructive px-1 text-[10px] font-bold text-white',
       },
     },
     defaultVariants: {

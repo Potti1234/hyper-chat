@@ -52,6 +52,10 @@ export const buttonVariants = cva(
         // A direct message in the DMs tab: avatar, name and time, last message.
         'dm-row': 'w-full justify-start text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
         'dm-row-unread': 'w-full justify-start text-left font-bold text-sidebar-accent-foreground hover:bg-sidebar-accent',
+        'dm-row-active': 'w-full justify-start text-left bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary',
+        // A filter tab on the dark list pane (Activity's All, Mentions, Threads, Reactions).
+        'pane-tab': 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+        'pane-tab-active': 'bg-sidebar-accent text-sidebar-accent-foreground',
         // Someone picked in the To field; clicking takes them out.
         'person-chip': 'h-7 gap-1.5 rounded-md bg-link/10 px-1.5 text-[14px] font-semibold text-link hover:bg-link/20',
         // The conversation header's channel name: opens its details.
@@ -151,6 +155,9 @@ export type ButtonLinkProps = ButtonLinkBehaviorProps &
     variant?: ButtonVariants['variant']
     size?: ButtonVariants['size']
     class?: string
+    id?: string
+    /** A marker the page's own code or tests find the link by: data-<name>. */
+    marker?: readonly [name: string, value: string]
   }>
 
 export const buttonLink = <Msg>(
@@ -164,6 +171,8 @@ export const buttonLink = <Msg>(
     [
       h.DataAttribute('variant', variant),
       ...(props.dataSize === undefined ? [h.DataAttribute('size', size)] : []),
+      ...(props.id === undefined ? [] : [h.Id(props.id)]),
+      ...(props.marker === undefined ? [] : [h.DataAttribute(props.marker[0], props.marker[1])]),
       h.Class(cn(buttonVariants({ variant, size }), props.class)),
     ],
     h,

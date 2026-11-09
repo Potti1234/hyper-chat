@@ -16,7 +16,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
-import { Nav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '../view/shell'
+import { Nav, emptyNav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '../view/shell'
 
 /* Slack's Threads view: every thread you are part of (you started it,
    replied in it or were mentioned in it), the most recently answered first.
@@ -203,7 +203,7 @@ type Slice = Readonly<{ threads: ReadonlyArray<ThreadCard>; members: ReadonlyArr
 
 const sliceOf = (state: WorkspaceState, memberId: string): Slice => {
   const me = state.members.find(member => member.id === memberId) ?? null
-  return { threads: me === null ? [] : threadsOf(state, me), members: state.members, nav: me === null ? { channels: [], dms: [] } : navOf(state, me), me }
+  return { threads: me === null ? [] : threadsOf(state, me), members: state.members, nav: me === null ? emptyNav : navOf(state, me), me }
 }
 
 const sameMessages = (a: ReadonlyArray<ChatMessage>, b: ReadonlyArray<ChatMessage>) => a.length === b.length && a.every((message, index) => message === b[index])
@@ -317,7 +317,7 @@ const listView = (model: Model, h: HtmlBuilder<Message>): Html =>
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Threads - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav)], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), hasUnread: hasUnread(model.nav) }, h) }),
+      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           region(h, {
             id: 'sidebar',

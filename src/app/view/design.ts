@@ -104,4 +104,5 @@ export const slack = {
   dmList: 'dm-list',
   toField: 'recipient-field',
   browseRow: 'browse-row',
+  unreadDot: 'unread-dot',
 } as const

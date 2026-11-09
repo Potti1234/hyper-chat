@@ -59,6 +59,7 @@
   /* The DMs tab: the list of direct messages in the sidebar's place, and the
      To field of a new message. */
   .dm-list { display: flex; width: 360px; flex-shrink: 0; flex-direction: column; margin-top: 4px; border-radius: 8px 0 0 8px; background: var(--sidebar); color: var(--sidebar-foreground); }
+  .unread-dot { width: 8px; height: 8px; flex-shrink: 0; align-self: center; border-radius: 9999px; background: var(--link); }
   .recipient-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 49px; padding: 4px 16px; border-bottom: 1px solid var(--border); }
   .reply-divider { display: flex; align-items: center; gap: 8px; margin: 4px 20px; color: var(--muted-foreground); font-size: 13px; }
   .reply-divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }

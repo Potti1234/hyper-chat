@@ -49,7 +49,7 @@ describe('workspace', () => {
       const reactions = () => Effect.map(workspace.current, state => state.messages.find(candidate => candidate.id === message.id)?.reactions)
       yield* workspace.toggleReaction(message.id, '🚀', 'mem_blake') // eslint-disable-line crease/no-native-glyphs -- reaction content
       yield* workspace.toggleReaction(message.id, '🚀', 'mem_casey') // eslint-disable-line crease/no-native-glyphs -- reaction content
-      assert.deepStrictEqual(yield* reactions(), [{ emoji: '🚀', memberIds: ['mem_blake', 'mem_casey'] }]) // eslint-disable-line crease/no-native-glyphs -- reaction content
+      assert.deepStrictEqual(yield* reactions(), [{ emoji: '🚀', memberIds: ['mem_blake', 'mem_casey'], at: 0 }]) // eslint-disable-line crease/no-native-glyphs -- reaction content
       yield* workspace.toggleReaction(message.id, '🚀', 'mem_blake') // eslint-disable-line crease/no-native-glyphs -- reaction content
       yield* workspace.toggleReaction(message.id, '🚀', 'mem_casey') // eslint-disable-line crease/no-native-glyphs -- reaction content
       assert.deepStrictEqual(yield* reactions(), [])

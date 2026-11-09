@@ -22,6 +22,8 @@ import {
   setArchived,
   updateChannel,
   markRead,
+  markUnread,
+  seeActivity,
   openConversation,
   editMessage,
   deleteMessage,
@@ -87,6 +89,8 @@ export class Workspace extends Context.Service<
     readonly openConversation: (memberIds: ReadonlyArray<string>, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly postMessage: (channelId: string, text: string, actorId: string, options?: PostOptions) => Effect.Effect<Message, InvalidChange>
     readonly markRead: (channelId: string, memberId: string) => Effect.Effect<void>
+    readonly markUnread: (messageId: string, actorId: string) => Effect.Effect<void, InvalidChange>
+    readonly seeActivity: (memberId: string) => Effect.Effect<void>
     readonly editMessage: (messageId: string, text: string, actorId: string) => Effect.Effect<Message, InvalidChange>
     readonly deleteMessage: (messageId: string, actorId: string) => Effect.Effect<void, InvalidChange>
     readonly toggleReaction: (messageId: string, emoji: string, actorId: string) => Effect.Effect<void, InvalidChange>
@@ -124,6 +128,8 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
   openConversation: (memberIds, actorId) => backend.run(openConversation(memberIds, actorId)),
   postMessage: (channelId, text, actorId, options) => backend.run(postMessage(channelId, text, actorId, options)),
   markRead: (channelId, memberId) => backend.run(markRead(channelId, memberId)),
+  markUnread: (messageId, actorId) => backend.run(markUnread(messageId, actorId)),
+  seeActivity: memberId => backend.run(seeActivity(memberId)),
   editMessage: (messageId, text, actorId) => backend.run(editMessage(messageId, text, actorId)),
   deleteMessage: (messageId, actorId) => backend.run(deleteMessage(messageId, actorId)),
   toggleReaction: (messageId, emoji, actorId) => backend.run(toggleReaction(messageId, emoji, actorId)),

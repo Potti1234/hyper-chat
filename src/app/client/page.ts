@@ -20,7 +20,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
-import { Nav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '../view/shell'
+import { Nav, emptyNav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '../view/shell'
 
 /* A conversation (channel or direct message), Slack's main view: the frame
    (rail and sidebar), the conversation header, messages grouped by day and
@@ -110,6 +110,7 @@ export const Message = defineMessageUnion({
   ChangedEmojiQuery: { text: S.String },
   ClickedEmoji: { emoji: S.String },
   ClickedMore: { messageId: S.String, where: Where },
+  ClickedMarkUnread: { messageId: S.String },
   ClickedCloseOverlay: {},
   ClickedEdit: { messageId: S.String, where: Where },
   ClickedReplyInThread: { messageId: S.String },
@@ -163,6 +164,7 @@ export const ClientMessage = S.Union([
   Message.ClickedAddReaction,
   Message.ClickedEmoji,
   Message.ClickedMore,
+  Message.ClickedMarkUnread,
   Message.ClickedCloseOverlay,
   Message.ClickedEdit,
   Message.SubmittedEdit,
@@ -235,6 +237,16 @@ export const ToggleReaction = Command.define('ToggleReaction', {
   messages: [Message.CompletedChange, Message.FailedChange],
   execute: ({ messageId, emoji, actorId }) =>
     Workspace.use(workspace => workspace.toggleReaction(messageId, emoji, actorId)).pipe(
+      Effect.as(Message.CompletedChange()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const MarkUnread = Command.define('MarkUnread', {
+  args: { messageId: S.String, actorId: S.String },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ messageId, actorId }) =>
+    Workspace.use(workspace => workspace.markUnread(messageId, actorId)).pipe(
       Effect.as(Message.CompletedChange()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
@@ -419,6 +431,10 @@ const composerOf = (where: Where) => (where === 'thread' ? '#thread-composer' : 
 
 const ownMessage = (model: Model, messageId: string) => model.messages.find(message => message.id === messageId && message.authorId === model.me.id)
 
+/** A message of the conversation you can mark unread from. */
+const unreadable = (model: Model, messageId: string) =>
+  model.channel !== null && isMemberOf(model.channel, model.me.id) ? model.messages.find(message => message.id === messageId && inChannel(message)) : undefined
+
 /** The CSS anchor of a message's toolbar or reaction-bar button. */
 export const anchorOf = (messageId: string, from: 'toolbar' | 'reactions' | 'more', where: Where) => `--${where}-${from}-${messageId.replace(/[^a-zA-Z0-9-]/g, '-')}`
 
@@ -533,7 +549,7 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       ChangedEmojiQuery: ({ text }) => ({ model: { ...model, emojiQuery: text.slice(0, 40) } }),
       ClickedEmoji: ({ emoji }) => (model.overlay?.kind === 'emoji' ? react(model, model.overlay.messageId, emoji) : { model }),
       ClickedMore: ({ messageId, where }) =>
-        ownMessage(model, messageId) === undefined
+        ownMessage(model, messageId) === undefined && !(where === 'channel' && unreadable(model, messageId) !== undefined)
           ? { model }
           : {
               model: {
@@ -541,6 +557,12 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
                 overlay: model.overlay?.kind === 'actions' && model.overlay.messageId === messageId && model.overlay.where === where ? null : { kind: 'actions', messageId, where, anchor: anchorOf(messageId, 'more', where) },
               },
             },
+      ClickedMarkUnread: ({ messageId }) => {
+        const found = unreadable(model, messageId)
+        if (found === undefined) return { model }
+        // Stays unread while you look at it, until you open the conversation again.
+        return { model: { ...model, overlay: null, readMarker: found.createdAt - 1, markedUpTo: Number.MAX_SAFE_INTEGER }, commands: [MarkUnread({ messageId, actorId: model.me.id })] }
+      },
       ClickedCloseOverlay: () => ({ model: { ...model, overlay: null } }),
       ClickedEdit: ({ messageId, where }) => startEdit(model, messageId, where),
       ClickedReplyInThread: ({ messageId }) => openThread(model, messageId),
@@ -647,7 +669,7 @@ export const sliceOf = (state: WorkspaceState, channelId: string, memberId: stri
     members: state.members,
     messages: all.filter(message => shown.has(message.id) || (message.threadId !== null && shown.has(message.threadId))),
     older: Math.max(0, listed.length - SHOWN),
-    nav: me === null ? { channels: [], dms: [] } : navOf(state, me),
+    nav: me === null ? emptyNav : navOf(state, me),
     me,
   }
 }
@@ -754,9 +776,9 @@ const toolbarView = (model: Model, message: ChatMessage, where: Where, h: HtmlBu
               : []),
           ]
         : []),
-      ...(isMine
+      ...(isMine ? [button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Edit message', title: 'Edit message', onClick: Message.ClickedEdit({ messageId: message.id, where }), children: [Icon.icon('pencil', {}, h)] }, h)] : []),
+      ...(isMine || (where === 'channel' && unreadable(model, message.id) !== undefined)
         ? [
-            button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Edit message', title: 'Edit message', onClick: Message.ClickedEdit({ messageId: message.id, where }), children: [Icon.icon('pencil', {}, h)] }, h),
             button({ id: `${where}-more-${message.id}`, variant: 'toolbar', size: 'icon-sm', ariaLabel: 'More actions', title: 'More actions', onClick: Message.ClickedMore({ messageId: message.id, where }), anchorName: anchorOf(message.id, 'more', where), popup: 'menu', isExpanded: isMenuOpen, children: [Icon.icon('ellipsis-vertical', {}, h)] }, h),
           ]
         : []),
@@ -862,18 +884,23 @@ const emojiPicker = (model: Model, anchor: string, h: HtmlBuilder<Message>): Htm
     ] }, h)
 }
 
-const actionsMenu = (messageId: string, where: Where, anchor: string, h: HtmlBuilder<Message>): Html =>
-  box({ class: 'z-50 flex w-56 flex-col rounded-lg border bg-popover p-1 text-popover-foreground shadow-[0_8px_30px_rgb(0_0_0/0.12)]', style: anchoredStyle(anchor, { side: 'bottom', align: 'end' }), attributes: [h.Id('message-menu'), h.Role('menu'), h.AriaLabel('Message actions')], children: [
-      optionRow({ id: 'menu-edit', value: 'edit', isActive: false, onClick: Message.ClickedEdit({ messageId, where }), children: [Icon.icon('pencil', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Edit message'] }, h)] }, h),
-      optionRow({ id: 'menu-delete', value: 'delete', isActive: false, onClick: Message.ClickedDelete({ messageId }), children: [Icon.icon('trash-2', { class: 'size-4 text-destructive' }, h), box({ as: 'span', class: 'flex-1 text-destructive', children: ['Delete message…'] }, h)] }, h),
+const actionsMenu = (model: Model, messageId: string, where: Where, anchor: string, h: HtmlBuilder<Message>): Html => {
+  const isMine = ownMessage(model, messageId) !== undefined
+  return box({ class: 'z-50 flex w-56 flex-col rounded-lg border bg-popover p-1 text-popover-foreground shadow-[0_8px_30px_rgb(0_0_0/0.12)]', style: anchoredStyle(anchor, { side: 'bottom', align: 'end' }), attributes: [h.Id('message-menu'), h.Role('menu'), h.AriaLabel('Message actions')], children: [
+      ...(where === 'channel' && unreadable(model, messageId) !== undefined
+        ? [optionRow({ id: 'menu-unread', value: 'unread', isActive: false, onClick: Message.ClickedMarkUnread({ messageId }), children: [Icon.icon('mail', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Mark unread'] }, h)] }, h)]
+        : []),
+      ...(isMine ? [optionRow({ id: 'menu-edit', value: 'edit', isActive: false, onClick: Message.ClickedEdit({ messageId, where }), children: [Icon.icon('pencil', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Edit message'] }, h)] }, h),
+      optionRow({ id: 'menu-delete', value: 'delete', isActive: false, onClick: Message.ClickedDelete({ messageId }), children: [Icon.icon('trash-2', { class: 'size-4 text-destructive' }, h), box({ as: 'span', class: 'flex-1 text-destructive', children: ['Delete message…'] }, h)] }, h)] : []),
     ] }, h)
+}
 
 const overlayView = (model: Model, h: HtmlBuilder<Message>): Html =>
   box({ class: 'contents', attributes: [h.Id('overlay')], children: model.overlay === null
       ? []
       : [
           box({ class: 'fixed inset-0 z-40', attributes: [h.AriaHidden(true), h.OnClick(Message.ClickedCloseOverlay())] }, h),
-          model.overlay.kind === 'emoji' ? emojiPicker(model, model.overlay.anchor, h) : actionsMenu(model.overlay.messageId, model.overlay.where, model.overlay.anchor, h),
+          model.overlay.kind === 'emoji' ? emojiPicker(model, model.overlay.anchor, h) : actionsMenu(model, model.overlay.messageId, model.overlay.where, model.overlay.anchor, h),
         ] }, h)
 
 const fieldLabel: Record<DetailsField, string> = { name: 'Channel name', topic: 'Topic', description: 'Description' }
@@ -1130,7 +1157,7 @@ const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${model.channel === null || model.channel.kind === 'dm' ? '' : '#'}${titleOf(model)} - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav)], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), hasUnread: hasUnread(model.nav) }, h) }),
+      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           region(h, {
             id: 'sidebar',

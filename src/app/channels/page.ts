@@ -15,7 +15,7 @@ import { requireMember } from '../auth'
 import { ChannelKind, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, Member, canRead, channelSlug, compareChannels, isMemberOf } from '../domain'
 import { Workspace, type WorkspaceState } from '../store'
 import { box, pageRoot, slack } from '../view/design'
-import { Nav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '../view/shell'
+import { Nav, emptyNav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '../view/shell'
 
 /* Slack's channel browser ("All channels"): every public channel and the
    private ones you are in, with members and description; join or leave from
@@ -224,7 +224,7 @@ type Slice = Readonly<{ rows: ReadonlyArray<ChannelRow>; nav: Nav; members: Read
 
 const sliceOf = (state: WorkspaceState, memberId: string): Slice => {
   const me = state.members.find(member => member.id === memberId) ?? null
-  return me === null ? { rows: [], nav: { channels: [], dms: [] }, members: state.members, me } : { rows: channelsOf(state, me), nav: navOf(state, me), members: state.members, me }
+  return me === null ? { rows: [], nav: emptyNav, members: state.members, me } : { rows: channelsOf(state, me), nav: navOf(state, me), members: state.members, me }
 }
 
 const sameRow = (a: ChannelRow, b: ChannelRow) =>
@@ -324,7 +324,7 @@ const createDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `All channels - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav)], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), hasUnread: hasUnread(model.nav) }, h) }),
+      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           region(h, { id: 'sidebar', deps: [model.nav, model.members, model.collapsed], render: () => sidebar({ nav: model.nav, members: model.members, activeId: 'channels', collapsed: model.collapsed, onToggleSection: section => Message.ClickedToggleSection({ section }) }, h) }),
           box({ as: 'main', class: slack.main, children: [

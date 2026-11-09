@@ -1,6 +1,7 @@
 import { Data, Effect } from 'effect'
 
-import { AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Read, canRead, channelSlug, isMemberOf } from './domain'
+import { activityOf } from './activity'
+import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Read, canRead, channelSlug, inChannel, isMemberOf } from './domain'
 import { isEmoji } from './emoji'
 
 /* The workspace's data and every change to it, as pure operations: an
@@ -282,19 +283,25 @@ export const deleteMessage =
  *  conversation react, with an emoji from the picker. */
 export const toggleReaction =
   (messageId: string, emoji: string, actorId: string): Op<void, InvalidChange> =>
-  data =>
+  (data, { at }) =>
     Effect.gen(function* () {
       if (!isEmoji(emoji)) return yield* invalid('Pick an emoji from the list.')
       const message = yield* findMessage(data, messageId)
       const channel = yield* findChannel(data, message.channelId)
       if (!isMemberOf(channel, actorId)) return yield* invalid(`Join #${channel.name} to react.`)
       const current = message.reactions.find(reaction => reaction.emoji === emoji)
+      // Stamped for the author's Activity, so their own reactions don't count.
+      const stamp = actorId === message.authorId ? {} : { at }
       const reactions =
         current === undefined
-          ? [...message.reactions, { emoji, memberIds: [actorId] }]
+          ? [...message.reactions, { emoji, memberIds: [actorId], ...stamp }]
           : message.reactions
               .map(reaction =>
-                reaction !== current ? reaction : { emoji, memberIds: current.memberIds.includes(actorId) ? current.memberIds.filter(id => id !== actorId) : [...current.memberIds, actorId] },
+                reaction !== current
+                  ? reaction
+                  : current.memberIds.includes(actorId)
+                    ? { ...current, memberIds: current.memberIds.filter(id => id !== actorId) }
+                    : { ...current, memberIds: [...current.memberIds, actorId], ...stamp },
               )
               .filter(reaction => reaction.memberIds.length > 0)
       return [undefined, replaceMessage(data, message, { ...message, reactions })] as const
@@ -309,6 +316,32 @@ export const markRead =
     const newest = data.messages.reduce((latest, message) => (message.channelId === channelId && message.createdAt > latest ? message.createdAt : latest), 0)
     if (newest === 0) return unchanged(undefined, data)
     const reads = withRead(data.reads, { memberId, channelId, at: newest })
+    return unchanged(undefined, reads === data.reads ? data : { ...data, reads })
+  }
+
+/** Marks a conversation unread from a message on: read up to just before it. */
+export const markUnread =
+  (messageId: string, actorId: string): Op<void, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      const message = yield* findMessage(data, messageId)
+      const channel = yield* findChannel(data, message.channelId)
+      if (!isMemberOf(channel, actorId)) return yield* invalid('Join this conversation first.')
+      if (!inChannel(message)) return yield* invalid('Mark a message in the conversation itself unread.')
+      const read: Read = { memberId: actorId, channelId: channel.id, at: message.createdAt - 1 }
+      const current = data.reads.find(candidate => candidate.memberId === actorId && candidate.channelId === channel.id)
+      if (current?.at === read.at) return [undefined, data] as const
+      return [undefined, { ...data, reads: current === undefined ? [...data.reads, read] : data.reads.map(candidate => (candidate === current ? read : candidate)) }] as const
+    })
+
+/** Someone has seen their Activity up to its newest item. */
+export const seeActivity =
+  (memberId: string): Op<void> =>
+  data => {
+    const me = data.members.find(member => member.id === memberId)
+    const newest = me === undefined ? 0 : (activityOf(data, me)[0]?.at ?? 0)
+    if (newest === 0) return unchanged(undefined, data)
+    const reads = withRead(data.reads, { memberId, channelId: ACTIVITY_READ, at: newest })
     return unchanged(undefined, reads === data.reads ? data : { ...data, reads })
   }
 
@@ -347,7 +380,7 @@ export const clearDemo = (): Op<DemoCounts> => data => {
     members: data.members.filter(member => !member.isDemo),
     channels: channels.map(channel => (channel.memberIds.some(id => demoMembers.has(id)) ? { ...channel, memberIds: channel.memberIds.filter(id => !demoMembers.has(id)) } : channel)),
     messages,
-    reads: data.reads.filter(read => !demoMembers.has(read.memberId) && channelIds.has(read.channelId)),
+    reads: data.reads.filter(read => !demoMembers.has(read.memberId) && (channelIds.has(read.channelId) || read.channelId === ACTIVITY_READ)),
     passwords: Object.fromEntries(Object.entries(data.passwords).filter(([id]) => !demoMembers.has(id))),
   })
 }

@@ -17,7 +17,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { MAX_DM_PEOPLE } from '../workspace'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { Nav, NavRow, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav } from '../view/shell'
+import { Nav, emptyNav, NavRow, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav } from '../view/shell'
 
 /* Slack's DMs tab: your direct messages, the most recent first, with who
    wrote last and what, and a filter; beside them "New message", where you
@@ -233,7 +233,7 @@ type Slice = Readonly<{ dms: ReadonlyArray<DmRow>; members: ReadonlyArray<Member
 
 const sliceOf = (state: WorkspaceState, memberId: string): Slice => {
   const me = state.members.find(member => member.id === memberId) ?? null
-  if (me === null) return { dms: [], members: state.members, nav: { channels: [], dms: [] }, me }
+  if (me === null) return { dms: [], members: state.members, nav: emptyNav, me }
   const nav = navOf(state, me)
   return { dms: dmsOf(state, me, nav), members: state.members, nav, me }
 }
@@ -378,7 +378,7 @@ const bodyView = (model: Model, h: HtmlBuilder<Message>): Html => {
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Direct messages - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav)], render: () => rail({ me: model.me, active: 'dms', onToggleTheme: Message.ClickedToggleTheme(), hasUnread: hasUnread(model.nav) }, h) }),
+      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'dms', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           region(h, { id: 'dm-list', deps: [model.dms, model.members, model.filter, model.now, model.me.id], render: () => listView(model, h) }),
           box({ as: 'main', class: slack.main, children: [

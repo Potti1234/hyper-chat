@@ -139,7 +139,12 @@ export const conversationName = (channel: Channel, members: ReadonlyArray<Member
 
 // MESSAGES
 
-export const Reaction = S.Struct({ emoji: S.String, memberIds: S.Array(S.String) })
+export const Reaction = S.Struct({
+  emoji: S.String,
+  memberIds: S.Array(S.String),
+  /** When someone last added it (for Activity); missing on older reactions. */
+  at: S.optionalKey(S.Number),
+})
 export type Reaction = typeof Reaction.Type
 
 export const Message = S.Struct({
@@ -166,6 +171,9 @@ export const MAX_MESSAGE = 4000
 /** How far someone has read a conversation (the newest message they saw). */
 export const Read = S.Struct({ memberId: S.String, channelId: S.String, at: S.Number })
 export type Read = typeof Read.Type
+
+/** The read marker of someone's Activity view (a Read with this as its channel). */
+export const ACTIVITY_READ = 'activity'
 
 export const readAt = (reads: ReadonlyArray<Read>, memberId: string, channelId: string): number =>
   reads.find(read => read.memberId === memberId && read.channelId === channelId)?.at ?? 0

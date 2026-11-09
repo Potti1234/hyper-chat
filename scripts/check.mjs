@@ -5,7 +5,8 @@ import { chromium } from 'playwright'
    the flows built so far: the Slack frame, live messages, editing with
    ArrowUp, reactions and the emoji picker, deleting, threads (summary, pane,
    "also send to channel", a thread URL), unread channels, the Threads view,
-   DMs and channel management (browse, create, join, topic, members, leave).
+   DMs, channel management (browse, create, join, topic, members, leave),
+   Activity (mentions, filters, opening an item) and Mark unread.
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -30,7 +31,7 @@ const live = async (page, go) => {
   await go()
   await stream
   // Pages with key bindings are live once those are in; the others once the stream answered.
-  if (!page.url().includes('/channels')) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
+  if (!/\/(channels|activity)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
   else await page.waitForTimeout(300)
   await settle(page)
 }
@@ -166,6 +167,43 @@ try {
   await avery.keyboard.type(`Unread ${Date.now()}`)
   await avery.keyboard.press('Enter')
   check('a new message bolds the channel for someone elsewhere', await until(blake, () => [...document.querySelectorAll('#sidebar a')].some(link => link.textContent.includes('general') && getComputedStyle(link).fontWeight >= 700)))
+
+  // Activity
+  const activityCount = page => page.locator('#rail a[href="/activity"] [data-slot=badge]').innerText().then(Number, () => 0)
+  await visit(avery, '/client/ch_random')
+  await visit(blake, '/client/ch_general')
+  const ping = `Ping ${Date.now()}`
+  const before = await activityCount(avery)
+  await blake.click('#composer')
+  await blake.keyboard.type(`@avery ${ping}`)
+  await blake.keyboard.press('Enter')
+  check('a mention raises the Activity count live', await until(avery, before => Number(document.querySelector('#rail a[href="/activity"] [data-slot=badge]')?.textContent ?? 0) > before, before))
+  await visit(avery, '/activity')
+  check('Activity lists the mention first', (await avery.locator('#activity-items a').first().innerText()).includes(ping))
+  check('new items are marked unread', (await avery.locator('#activity-items a').first().locator('[aria-label=Unread]').count()) === 1)
+  check('the rail count clears on the Activity page', (await activityCount(avery)) === 0)
+  await avery.click('[data-tab=reaction]')
+  check('the Reactions filter shows only reactions', await until(avery, () => [...document.querySelectorAll('#activity-items a')].every(link => link.dataset.activity.startsWith('reaction:'))))
+  await avery.click('[data-tab=mention]')
+  check('the Mentions filter shows the mention', await until(avery, ping => [...document.querySelectorAll('#activity-items a')].some(link => link.dataset.activity.startsWith('mention:') && link.textContent.includes(ping)), ping))
+  await live(avery, () => avery.locator('#activity-items a').first().click())
+  check('picking an item previews its message', (await avery.locator('#activity-preview').innerText()).includes(ping))
+  check('the filter survives picking', new URL(avery.url()).searchParams.get('tab') === 'mention')
+  await live(avery, () => avery.click('#open-item'))
+  check('"Open in channel" opens the conversation', new URL(avery.url()).pathname === '/client/ch_general')
+  check('the seen mention does not come back', (await activityCount(avery)) === 0)
+
+  // Mark unread
+  const theirs = avery.locator('#message-list li[data-author=mem_blake]').last()
+  await theirs.hover()
+  await theirs.getByRole('button', { name: 'More actions' }).click()
+  check('others\' messages offer Mark unread', await until(avery, () => document.querySelector('#menu-unread') !== null && document.querySelector('#menu-edit') === null))
+  await avery.click('#menu-unread')
+  check('the menu closes', await until(avery, () => document.querySelector('#message-menu') === null))
+  check('the new-messages line moves there', await until(avery, () => document.querySelector('#new-divider') !== null))
+  await visit(avery, '/client/ch_random')
+  check('the conversation stays unread', await until(avery, () => [...document.querySelectorAll('#sidebar a')].some(link => link.textContent.includes('general') && getComputedStyle(link).fontWeight >= 700)))
+  await visit(avery, '/client/ch_general')
 
   // Direct messages
   await visit(blake, '/dms')
