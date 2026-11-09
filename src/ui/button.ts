@@ -47,6 +47,8 @@ export const buttonVariants = cva(
         'thread-summary': 'h-8 w-full max-w-[560px] justify-start gap-2 rounded-md border-transparent px-1 text-[13px] font-normal text-muted-foreground hover:border-border hover:bg-background',
         // "replied to a thread: …" above a reply also sent to the channel.
         'replied-to': 'h-5 max-w-full min-w-0 justify-start overflow-hidden px-0 text-[12px] font-normal text-link hover:underline',
+        // The conversation a card of the Threads view is in.
+        'thread-channel': 'h-6 justify-start self-start px-0 has-data-[icon=inline-start]:pl-0 text-[15px] font-bold text-foreground hover:underline',
         // The composer's send button: grey until there is something to send.
         send: 'bg-primary text-primary-foreground hover:bg-primary/90 data-[disabled]:bg-transparent data-[disabled]:text-muted-foreground data-[disabled]:opacity-100 aria-disabled:bg-transparent aria-disabled:text-muted-foreground aria-disabled:opacity-100',
       },

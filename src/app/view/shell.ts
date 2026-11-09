@@ -160,6 +160,9 @@ export const sidebar = <Msg>(props: SidebarProps<Msg>, h: HtmlBuilder<Msg>): Htm
           box({ as: 'h2', class: 'flex min-w-0 flex-1 items-center gap-1 truncate text-[18px] font-bold text-sidebar-accent-foreground', children: [WORKSPACE_NAME, Icon.chevronDown({ class: 'size-4' }, h)] }, h),
         ] }, h),
       box({ class: 'min-h-0 flex-1 overflow-y-auto px-2 pb-4', attributes: [h.DataAttribute('keep-scroll', 'sidebar')], children: [
+          box({ as: 'nav', class: 'mt-2 flex flex-col', attributes: [h.AriaLabel('Views')], children: [
+              buttonLink({ href: '/threads', variant: props.activeId === 'threads' ? 'sidebar-active' : 'sidebar', size: 'row', leadingIcon: Icon.icon('message-square-text', {}, h), children: [box({ as: 'span', class: 'min-w-0 flex-1 truncate text-left', children: ['Threads'] }, h)] }, h),
+            ] }, h),
           section('channels', 'Channels', props.nav.channels.map(row => sidebarRow(row, props, h)), props, h),
           section('dms', 'Direct messages', props.nav.dms.map(row => sidebarRow(row, props, h)), props, h),
         ] }, h),

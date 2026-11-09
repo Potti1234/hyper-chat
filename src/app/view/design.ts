@@ -100,4 +100,5 @@ export const slack = {
   composer: 'composer',
   thread: 'slack-thread',
   replyDivider: 'reply-divider',
+  threadCard: 'thread-card',
 } as const

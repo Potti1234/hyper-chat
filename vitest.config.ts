@@ -6,7 +6,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
-    name: 'hypertasks',
+    name: 'hyperchat',
     include: ['test/**/*.test.ts'],
   },
 })

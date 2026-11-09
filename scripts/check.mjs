@@ -138,8 +138,27 @@ try {
   await avery.click('#close-thread')
   check('the close button closes the pane', await until(avery, () => document.querySelectorAll('#thread li').length === 0))
 
+  // The Threads view
+  await visit(avery, '/threads')
+  check('the sidebar links the Threads view', (await avery.locator('#sidebar a[href="/threads"]').count()) === 1)
+  check('the Threads view lists threads you are in', (await avery.locator('#threads-list article').count()) > 0)
+  check('the newest answered thread is first', (await avery.locator('#threads-list article').first().innerText()).includes(reply))
+  const card = avery.locator('#threads-list article').first()
+  const more = card.getByRole('button', { name: /^Show \d+ more/ })
+  if ((await more.count()) > 0) {
+    const before = await card.locator('li[data-author]').count()
+    await more.click()
+    check('"Show more replies" shows the rest', await until(avery, before => document.querySelector('#threads-list article')?.querySelectorAll('li[data-author]').length > before, before))
+  }
+  await card.locator('textarea').click()
+  await avery.keyboard.type(`${reply} from Threads`)
+  await avery.keyboard.press('Enter')
+  check('a reply from the Threads view reaches the thread', await sees(blake, `${reply} from Threads`, '#thread'))
+  check('it shows on the card', await sees(avery, `${reply} from Threads`, '#threads-list'))
+
   // Unreads
   await visit(blake, '/client/ch_random')
+  await visit(avery, '/client/ch_general')
   await avery.click('#composer')
   await avery.keyboard.type(`Unread ${Date.now()}`)
   await avery.keyboard.press('Enter')

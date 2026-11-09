@@ -52,6 +52,10 @@
   .slack-main[data-split] { border-radius: 0; }
   .slack-thread { display: flex; width: 420px; flex-shrink: 0; flex-direction: column; margin-top: 4px; overflow: hidden; border-left: 1px solid var(--border); border-radius: 0 8px 8px 0; background: var(--background); }
   .slack-thread .composer { margin: 8px 16px 16px; }
+  /* A thread in the Threads view: a framed card of its messages and composer. */
+  .thread-card { display: flex; flex-direction: column; margin: 16px 20px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+  .thread-card .message-row { padding-left: 20px; padding-right: 20px; }
+  .thread-card .composer { margin: 4px 20px 16px; }
   .reply-divider { display: flex; align-items: center; gap: 8px; margin: 4px 20px; color: var(--muted-foreground); font-size: 13px; }
   .reply-divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
   .composer[data-inline] { margin: 4px 0; }
