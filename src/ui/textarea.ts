@@ -32,6 +32,8 @@ export const textareaVariants = {
   'message-edit': 'field-sizing-content max-h-60 min-h-10 rounded-md border bg-background px-3 py-2 text-[14px] shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 md:text-[14px]',
   'composer': 'field-sizing-content max-h-48 min-h-10 rounded-lg border bg-background px-3 py-2.5 text-[14px] shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 md:text-[14px]',
   'comment': 'field-sizing-content block min-h-16 rounded-none border-0 bg-transparent px-3.5 pt-3 text-[13.5px] shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[13.5px] dark:bg-transparent',
+  // Slack's composer: borderless inside its framed box (design.css .composer).
+  'slack-composer': 'field-sizing-content block max-h-60 min-h-11 rounded-none border-0 bg-transparent px-3 pt-2.5 pb-1 text-[15px] leading-[22px] shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[15px] dark:bg-transparent',
   'bare': 'min-h-24 rounded-none border-0 bg-transparent px-0 py-1 text-[14px] leading-relaxed shadow-none placeholder:text-muted-foreground focus-visible:ring-0 md:text-[14px] dark:bg-transparent',
 } as const
 

@@ -21,6 +21,8 @@ export const badgeVariants = cva(
         ghost:
           'hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50',
         link: 'text-primary underline-offset-4 hover:underline',
+        // An unread mention count in the sidebar.
+        count: 'h-[18px] min-w-[18px] justify-center rounded-full border-transparent bg-destructive px-1.5 text-[11px] font-bold text-white',
       },
     },
     defaultVariants: {

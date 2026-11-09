@@ -78,3 +78,23 @@ export const pageRoot = <Msg>(
     [h.Id('app'), h.Class(cn('app-root flex h-dvh overflow-hidden bg-background text-foreground', props.isDark && 'dark', props.theme !== '' && `theme-${props.theme}`, props.class))],
     [...props.children],
   )
+
+/** Classes of the Slack frame and message list (design.css), named once. */
+export const slack = {
+  frame: 'slack-frame',
+  rail: 'slack-rail',
+  railDot: 'rail-dot',
+  workspaceIcon: 'workspace-icon',
+  presenceDot: 'presence-dot',
+  sidebar: 'slack-sidebar',
+  dmCount: 'dm-count',
+  main: 'slack-main',
+  messageRow: 'message-row',
+  messageGutter: 'message-gutter',
+  messageHoverTime: 'message-hover-time',
+  messageText: 'message-text',
+  mention: 'mention',
+  dayDivider: 'day-divider',
+  newDivider: 'new-divider',
+  composer: 'composer',
+} as const

@@ -220,3 +220,19 @@ export const dayLabel = (at: number, now: number): string => {
   const month = date.toLocaleDateString('en-US', { month: 'long', timeZone: TIME_ZONE })
   return `${weekday}, ${month} ${n}${suffix}`
 }
+
+// MENTIONS
+
+/** The handle people @-mention someone by: the first name in lower case. */
+export const handleOf = (member: Member): string => firstName(member.name).toLowerCase()
+
+export const MENTION = /@([a-z][\w.-]*)/gi
+
+/** Whether a message mentions the member by handle, or everyone with @here / @channel. */
+export const mentions = (text: string, member: Member): boolean => {
+  const handle = handleOf(member)
+  return [...text.matchAll(MENTION)].some(([, name]) => {
+    const lower = (name ?? '').toLowerCase()
+    return lower === handle || lower === 'here' || lower === 'channel' || lower === 'everyone'
+  })
+}

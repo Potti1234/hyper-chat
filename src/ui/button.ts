@@ -28,6 +28,15 @@ export const buttonVariants = cva(
         destructive:
           'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
         link: 'text-primary underline-offset-4 hover:underline',
+        // The Slack frame (rail and sidebar) on its dark sidebar colours.
+        sidebar: 'w-full justify-start font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+        'sidebar-unread': 'w-full justify-start font-bold text-sidebar-accent-foreground hover:bg-sidebar-accent',
+        'sidebar-active': 'w-full justify-start font-medium bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary',
+        'sidebar-icon': 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-expanded:bg-sidebar-accent',
+        rail: 'text-sidebar-foreground hover:text-sidebar-accent-foreground [&_[data-slot=rail-icon]]:hover:bg-sidebar-accent',
+        'rail-active': 'text-sidebar-accent-foreground [&_[data-slot=rail-icon]]:bg-sidebar-accent',
+        // The composer's send button: grey until there is something to send.
+        send: 'bg-primary text-primary-foreground hover:bg-primary/90 data-[disabled]:bg-transparent data-[disabled]:text-muted-foreground data-[disabled]:opacity-100 aria-disabled:bg-transparent aria-disabled:text-muted-foreground aria-disabled:opacity-100',
       },
       size: {
         default:
@@ -46,6 +55,10 @@ export const buttonVariants = cva(
         dense:
           'h-8 gap-1 rounded-[min(var(--radius-md),10px)] px-2.5 text-[13px] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5',
         'icon-md': 'size-7 rounded-[min(var(--radius-md),10px)]',
+        // A sidebar row: 28 px, Slack's 15 px label.
+        row: "h-7 gap-2 rounded-md px-2.5 text-[15px] [&_svg:not([class*='size-'])]:size-4",
+        // A rail item: icon tile above a small label.
+        rail: "h-auto flex-col gap-1 p-0 text-[11px] font-semibold [&_svg:not([class*='size-'])]:size-5",
       },
     },
     defaultVariants: {

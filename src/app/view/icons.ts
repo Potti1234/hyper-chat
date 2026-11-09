@@ -2,7 +2,7 @@ import type { Html, HtmlBuilder } from 'foldkit/html'
 
 import { type Member, initials } from '../domain'
 import { cn } from '@/lib/utils'
-import { box } from '@/app/view/design'
+import { box, slack } from '@/app/view/design'
 
 /* Our own glyphs: square Slack-style avatars with initials (members have no
    photos) and the workspace icon of the rail. */
@@ -30,4 +30,4 @@ export const avatar = <Msg>(member: Member | undefined, h: HtmlBuilder<Msg>, siz
 
 /** The workspace's icon in the rail: its initial on a rounded square. */
 export const workspaceIcon = <Msg>(name: string, h: HtmlBuilder<Msg>): Html =>
-  box({ as: 'span', class: 'workspace-icon', attributes: [h.Role('img'), h.AriaLabel(name)], children: [name.charAt(0).toUpperCase()] }, h)
+  box({ as: 'span', class: slack.workspaceIcon, attributes: [h.Role('img'), h.AriaLabel(name)], children: [name.charAt(0).toUpperCase()] }, h)

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import * as Hyper from '@hyper-effect/core'
 
 import * as Auth from '@/app/auth'
+import * as ClientPage from '@/app/client/page'
 import * as Postgres from '@/app/postgres'
 
 /* The server: one hyper-effect layer per page, plain routes for sign-in and
@@ -35,6 +36,8 @@ export const page: Hyper.Options = {
 }
 
 const Routes = Layer.mergeAll(
+  // "/" opens your home conversation (#general).
+  Hyper.layer(ClientPage.program, { ...page, path: '/client/:channel', paths: ['/'], prefetch: ['/client/*'] }),
   Auth.routes,
   HttpRouter.add('GET', '/favicon.ico', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),
   HttpRouter.add('GET', '/favicon.svg', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),
