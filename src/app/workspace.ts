@@ -1,6 +1,6 @@
 import { Data, Effect } from 'effect'
 
-import { AVATAR_COLORS, type Channel, MAX_MESSAGE, type Member, type Message, type Read, canRead, isMemberOf } from './domain'
+import { AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Read, canRead, channelSlug, isMemberOf } from './domain'
 import { isEmoji } from './emoji'
 
 /* The workspace's data and every change to it, as pure operations: an
@@ -52,7 +52,7 @@ export const addMember =
       isDemo: false,
     }
     // New accounts join #general, Slack's default channel.
-    const general = data.channels.find(channel => channel.kind === 'public' && channel.name === 'general')
+    const general = data.channels.find(channel => channel.kind === 'public' && channel.name === DEFAULT_CHANNEL)
     return Effect.succeed([
       member,
       {
@@ -100,6 +100,108 @@ export const openConversation =
     const channel: Channel = { id: id('dm'), name: '', kind: 'dm', topic: '', description: '', memberIds: people, createdBy: actorId, createdAt: at, isArchived: false, isDemo: false }
     return Effect.succeed([channel, { ...data, channels: [...data.channels, channel] }] as const)
   }
+
+// CHANNELS
+
+const channelNameOf = (data: WorkspaceData, input: string, except: string | null): Effect.Effect<string, InvalidChange> => {
+  const name = channelSlug(input)
+  if (name === '') return invalid('Give the channel a name.')
+  if (name.length > MAX_CHANNEL_NAME) return invalid(`Keep channel names under ${MAX_CHANNEL_NAME} characters.`)
+  if (data.channels.some(channel => channel.kind !== 'dm' && channel.id !== except && channel.name === name)) return invalid(`#${name} already exists. Pick another name.`)
+  return Effect.succeed(name)
+}
+
+const limited = (text: string, max: number, what: string): Effect.Effect<string, InvalidChange> => {
+  const body = text.trim()
+  return body.length > max ? invalid(`Keep the ${what} under ${max} characters.`) : Effect.succeed(body)
+}
+
+export type NewChannelInput = Readonly<{ name: string; isPrivate: boolean; description: string }>
+
+/** A new channel with its creator as the only member. */
+export const createChannel =
+  (input: NewChannelInput, actorId: string): Op<Channel, InvalidChange> =>
+  (data, { at, id }) =>
+    Effect.gen(function* () {
+      if (!data.members.some(member => member.id === actorId)) return yield* invalid('Sign in again to create channels.')
+      const name = yield* channelNameOf(data, input.name, null)
+      const description = yield* limited(input.description, MAX_DESCRIPTION, 'description')
+      const channel: Channel = { id: id('ch'), name, kind: input.isPrivate ? 'private' : 'public', topic: '', description, memberIds: [actorId], createdBy: actorId, createdAt: at, isArchived: false, isDemo: false }
+      return [channel, { ...data, channels: [...data.channels, channel] }] as const
+    })
+
+const findOpenChannel = (data: WorkspaceData, channelId: string, actorId: string): Effect.Effect<Channel, InvalidChange> =>
+  Effect.flatMap(findChannel(data, channelId), channel =>
+    channel.kind === 'dm' || !canRead(channel, actorId) ? invalid('That channel does not exist.') : channel.isArchived ? invalid('This channel is archived.') : Effect.succeed(channel),
+  )
+
+/** Anyone joins a public channel; private ones take an invitation. */
+export const joinChannel =
+  (channelId: string, actorId: string): Op<Channel, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      const channel = yield* findOpenChannel(data, channelId, actorId)
+      if (isMemberOf(channel, actorId)) return [channel, data] as const
+      if (channel.kind !== 'public') return yield* invalid('Ask a member to add you to this private channel.')
+      const next = { ...channel, memberIds: [...channel.memberIds, actorId] }
+      return [next, { ...data, channels: replace(data.channels, next) }] as const
+    })
+
+export const leaveChannel =
+  (channelId: string, actorId: string): Op<void, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      const channel = yield* findOpenChannel(data, channelId, actorId)
+      if (!isMemberOf(channel, actorId)) return [undefined, data] as const
+      if (channel.name === DEFAULT_CHANNEL) return yield* invalid(`Everyone stays in #${DEFAULT_CHANNEL}.`)
+      const next = { ...channel, memberIds: channel.memberIds.filter(id => id !== actorId) }
+      return [undefined, { ...data, channels: replace(data.channels, next) }] as const
+    })
+
+/** Members add people to their channel; the people must be in the workspace. */
+export const addToChannel =
+  (channelId: string, memberIds: ReadonlyArray<string>, actorId: string): Op<Channel, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      const channel = yield* findOpenChannel(data, channelId, actorId)
+      if (!isMemberOf(channel, actorId)) return yield* invalid(`Join #${channel.name} to add people to it.`)
+      if (!memberIds.every(memberId => data.members.some(member => member.id === memberId))) return yield* invalid('Pick people from your workspace.')
+      const added = [...new Set(memberIds)].filter(memberId => !isMemberOf(channel, memberId))
+      if (added.length === 0) return [channel, data] as const
+      const next = { ...channel, memberIds: [...channel.memberIds, ...added] }
+      return [next, { ...data, channels: replace(data.channels, next) }] as const
+    })
+
+export type ChannelDetails = Readonly<{ name?: string; topic?: string; description?: string }>
+
+/** Members rename a channel and set its topic and description (#general keeps its name). */
+export const updateChannel =
+  (channelId: string, details: ChannelDetails, actorId: string): Op<Channel, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      const channel = yield* findOpenChannel(data, channelId, actorId)
+      if (!isMemberOf(channel, actorId)) return yield* invalid(`Join #${channel.name} to edit it.`)
+      const name = details.name === undefined ? channel.name : yield* channelNameOf(data, details.name, channel.id)
+      if (name !== channel.name && channel.name === DEFAULT_CHANNEL) return yield* invalid(`#${DEFAULT_CHANNEL} keeps its name.`)
+      const topic = details.topic === undefined ? channel.topic : yield* limited(details.topic, MAX_TOPIC, 'topic')
+      const description = details.description === undefined ? channel.description : yield* limited(details.description, MAX_DESCRIPTION, 'description')
+      if (name === channel.name && topic === channel.topic && description === channel.description) return [channel, data] as const
+      const next = { ...channel, name, topic, description }
+      return [next, { ...data, channels: replace(data.channels, next) }] as const
+    })
+
+/** Members archive a channel: it leaves every sidebar and takes no messages, until unarchived. */
+export const setArchived =
+  (channelId: string, isArchived: boolean, actorId: string): Op<void, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      const channel = yield* findChannel(data, channelId)
+      if (channel.kind === 'dm' || !canRead(channel, actorId)) return yield* invalid('That channel does not exist.')
+      if (!isMemberOf(channel, actorId)) return yield* invalid(`Join #${channel.name} to archive it.`)
+      if (channel.name === DEFAULT_CHANNEL) return yield* invalid(`#${DEFAULT_CHANNEL} cannot be archived.`)
+      if (channel.isArchived === isArchived) return [undefined, data] as const
+      return [undefined, { ...data, channels: replace(data.channels, { ...channel, isArchived }) }] as const
+    })
 
 // MESSAGES
 

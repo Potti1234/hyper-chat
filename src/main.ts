@@ -8,6 +8,7 @@ import * as Hyper from '@hyper-effect/core'
 
 import * as Auth from '@/app/auth'
 import * as ClientPage from '@/app/client/page'
+import * as ChannelsPage from '@/app/channels/page'
 import * as DmsPage from '@/app/dms/page'
 import * as ThreadsPage from '@/app/threads/page'
 import * as Postgres from '@/app/postgres'
@@ -40,6 +41,7 @@ export const page: Hyper.Options = {
 const Routes = Layer.mergeAll(
   // "/" opens your home conversation (#general).
   Hyper.layer(ThreadsPage.program, { ...page, path: '/threads' }),
+  Hyper.layer(ChannelsPage.program, { ...page, path: '/channels' }),
   Hyper.layer(DmsPage.program, { ...page, path: '/dms' }),
   Hyper.layer(ClientPage.program, { ...page, path: '/client/:channel', paths: ['/', '/client/:channel/thread/:thread'], prefetch: ['/client/*'] }),
   Auth.routes,

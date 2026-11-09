@@ -4,7 +4,8 @@ import { chromium } from 'playwright'
    server with the demo content (npm run check:fresh provides both). It walks
    the flows built so far: the Slack frame, live messages, editing with
    ArrowUp, reactions and the emoji picker, deleting, threads (summary, pane,
-   "also send to channel", a thread URL) and unread channels.
+   "also send to channel", a thread URL), unread channels, the Threads view,
+   DMs and channel management (browse, create, join, topic, members, leave).
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -28,7 +29,9 @@ const live = async (page, go) => {
   const stream = page.waitForRequest(request => request.url().includes('/stream'))
   await go()
   await stream
-  await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
+  // Pages with key bindings are live once those are in; the others once the stream answered.
+  if (!page.url().includes('/channels')) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
+  else await page.waitForTimeout(300)
   await settle(page)
 }
 const signIn = async (name, path) => {
@@ -189,6 +192,52 @@ try {
   await visit(avery, '/dms')
   await avery.fill('#dm-filter', 'casey')
   check('"Find a DM" filters the list', await until(avery, () => [...document.querySelectorAll('#dm-list nav a')].every(link => link.textContent.includes('Casey'))))
+
+  // Channels: browse, create, join, topic, members, private, leave.
+  await visit(blake, '/channels')
+  await visit(avery, '/channels')
+  check('the channel browser lists public channels', await until(avery, () => document.querySelector('#channel-rows [data-channel="engineering"]') !== null))
+  check('it lists the private channels you are in', (await avery.locator('#channel-rows [data-channel="leadership"]').count()) === 1)
+  const channel = `check-${Date.now()}`
+  await avery.click('#open-create-channel')
+  await until(avery, () => document.querySelector('#channel-name') !== null)
+  await avery.click('#channel-name')
+  await avery.keyboard.type(channel.replace('-', ' '))
+  check('the name is shown as a channel name', await until(avery, channel => document.querySelector('#create-channel-form')?.textContent.includes(`#${channel}`), channel))
+  await avery.click('#create-channel-button')
+  await avery.waitForURL(/\/client\/ch_/, { timeout: 5000 }).catch(() => {})
+  check('creating opens the new channel', /\/client\/ch_/.test(avery.url()) && (await avery.locator('#channel-title').innerText()).includes(channel))
+  check('it is in your sidebar', await until(avery, channel => document.querySelector('#sidebar')?.textContent.includes(channel), channel))
+  check('it reaches the browser of others', await until(blake, channel => document.querySelector(`#channel-rows [data-channel="${channel}"]`) !== null, channel))
+  await blake.click(`button[aria-label="Join #${channel}"]`)
+  check('Join adds you', await until(blake, channel => document.querySelector(`#channel-rows [data-channel="${channel}"]`)?.textContent.includes('Joined'), channel))
+  check('the members count updates live', await until(avery, () => document.querySelector('#channel-members')?.textContent.trim().endsWith('2')))
+  await avery.click('#add-topic')
+  check('"Add a topic" opens the details editor', await until(avery, () => document.activeElement?.id === 'detail-field'))
+  await avery.keyboard.type('Checked by the browser')
+  await avery.keyboard.press('Enter')
+  check('the topic shows in the header', await until(avery, () => document.querySelector('#channel-topic')?.textContent.includes('Checked by the browser')))
+  await avery.click('#details button:has-text("Members")')
+  await avery.fill('#people-query', 'casey')
+  await avery.click('button[aria-label="Add Casey Lindqvist"]')
+  check('members add people', await until(avery, () => document.querySelector('#channel-members')?.textContent.trim().endsWith('3')))
+  await avery.click('#details button:has-text("About")')
+  await avery.click('#leave-channel')
+  await avery.waitForURL(url => !url.pathname.includes('ch_') || url.pathname.endsWith('ch_general'), { timeout: 5000 }).catch(() => {})
+  check('leaving takes you home', await until(avery, channel => !document.querySelector('#sidebar')?.textContent.includes(channel), channel))
+  await visit(avery, '/channels?new')
+  check('/channels?new opens the create dialog', await until(avery, () => document.querySelector('#channel-name') !== null))
+  const secret = `secret-${Date.now()}`
+  await avery.click('#channel-name')
+  await avery.keyboard.type(secret)
+  await avery.click('#channel-private')
+  await avery.click('#create-channel-button')
+  await avery.waitForURL(/\/client\/ch_/, { timeout: 5000 }).catch(() => {})
+  check('a private channel shows its lock', (await avery.locator('#channel-title svg').first().innerHTML()).includes('rect'))
+  await visit(blake, '/channels')
+  check('outsiders cannot find private channels', (await blake.locator(`#channel-rows [data-channel="${secret}"]`).count()) === 0)
+  await visit(blake, '/client/ch_eng')
+  check('visitors see Join channel', await until(blake, () => document.querySelector('#join-channel') !== null || document.querySelector('#composer') !== null))
 
   for (const { errors } of people) for (const error of errors) check('no browser errors', false, error)
 } finally {

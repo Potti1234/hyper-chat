@@ -101,6 +101,23 @@ export const isMemberOf = (channel: Channel, memberId: string): boolean => chann
 /** Who may read a conversation: anyone for a public channel, members otherwise. */
 export const canRead = (channel: Channel, memberId: string): boolean => channel.kind === 'public' || isMemberOf(channel, memberId)
 
+/** Slack's limits for a channel's name, topic and description. */
+export const MAX_CHANNEL_NAME = 80
+export const MAX_TOPIC = 250
+export const MAX_DESCRIPTION = 250
+
+/** The channel everyone is in: new accounts join it and nobody leaves it. */
+export const DEFAULT_CHANNEL = 'general'
+
+/** A channel name as Slack writes it: lower case, dashes for spaces, no punctuation but `-` and `_`. */
+export const channelSlug = (input: string): string =>
+  input
+    .trim()
+    .toLowerCase()
+    .replace(/^#+/, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^\p{L}\p{N}_-]/gu, '')
+
 export const compareChannels = (a: Channel, b: Channel): number => a.name.localeCompare(b.name)
 
 /** The other people of a direct message (you alone for your own notes). */

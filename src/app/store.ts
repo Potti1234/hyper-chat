@@ -5,14 +5,22 @@ import { Clock, Context, Effect, Layer, Semaphore, Stream, SubscriptionRef } fro
 import type { Channel, Member, Message, Read } from './domain'
 import { hashPassword, verifyPassword } from './password'
 import {
+  type ChannelDetails,
   type DemoCounts,
   type InvalidChange,
+  type NewChannelInput,
   type Op,
   type PostOptions,
   type WorkspaceData,
   addDemo,
   addMember,
+  addToChannel,
   clearDemo,
+  createChannel,
+  joinChannel,
+  leaveChannel,
+  setArchived,
+  updateChannel,
   markRead,
   openConversation,
   editMessage,
@@ -70,6 +78,12 @@ export class Workspace extends Context.Service<
     readonly setTheme: (memberId: string, isDark: boolean) => Effect.Effect<void>
     readonly setPreset: (memberId: string, theme: string) => Effect.Effect<void>
     /** The direct message with these people, started if there is none. */
+    readonly createChannel: (input: NewChannelInput, actorId: string) => Effect.Effect<Channel, InvalidChange>
+    readonly joinChannel: (channelId: string, actorId: string) => Effect.Effect<Channel, InvalidChange>
+    readonly leaveChannel: (channelId: string, actorId: string) => Effect.Effect<void, InvalidChange>
+    readonly addToChannel: (channelId: string, memberIds: ReadonlyArray<string>, actorId: string) => Effect.Effect<Channel, InvalidChange>
+    readonly updateChannel: (channelId: string, details: ChannelDetails, actorId: string) => Effect.Effect<Channel, InvalidChange>
+    readonly setArchived: (channelId: string, isArchived: boolean, actorId: string) => Effect.Effect<void, InvalidChange>
     readonly openConversation: (memberIds: ReadonlyArray<string>, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly postMessage: (channelId: string, text: string, actorId: string, options?: PostOptions) => Effect.Effect<Message, InvalidChange>
     readonly markRead: (channelId: string, memberId: string) => Effect.Effect<void>
@@ -101,6 +115,12 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
     }),
   setTheme: (memberId, isDark) => backend.run(setTheme(memberId, isDark)),
   setPreset: (memberId, theme) => backend.run(setPreset(memberId, theme)),
+  createChannel: (input, actorId) => backend.run(createChannel(input, actorId)),
+  joinChannel: (channelId, actorId) => backend.run(joinChannel(channelId, actorId)),
+  leaveChannel: (channelId, actorId) => backend.run(leaveChannel(channelId, actorId)),
+  addToChannel: (channelId, memberIds, actorId) => backend.run(addToChannel(channelId, memberIds, actorId)),
+  updateChannel: (channelId, details, actorId) => backend.run(updateChannel(channelId, details, actorId)),
+  setArchived: (channelId, isArchived, actorId) => backend.run(setArchived(channelId, isArchived, actorId)),
   openConversation: (memberIds, actorId) => backend.run(openConversation(memberIds, actorId)),
   postMessage: (channelId, text, actorId, options) => backend.run(postMessage(channelId, text, actorId, options)),
   markRead: (channelId, memberId) => backend.run(markRead(channelId, memberId)),

@@ -54,6 +54,19 @@ export const buttonVariants = cva(
         'dm-row-unread': 'w-full justify-start text-left font-bold text-sidebar-accent-foreground hover:bg-sidebar-accent',
         // Someone picked in the To field; clicking takes them out.
         'person-chip': 'h-7 gap-1.5 rounded-md bg-link/10 px-1.5 text-[14px] font-semibold text-link hover:bg-link/20',
+        // The conversation header's channel name: opens its details.
+        'channel-title': 'min-w-0 gap-1 px-1.5 text-[18px] font-black hover:bg-muted',
+        // The header's topic: muted text that opens the topic editor.
+        topic: 'min-w-0 justify-start px-1 text-[13px] font-normal text-muted-foreground hover:text-foreground',
+        // A destructive action shown as text (Leave channel).
+        'danger-text': 'justify-start text-destructive hover:bg-destructive/10',
+        // A channel in the channel browser: name above members and description.
+        'browse-row': 'min-w-0 flex-1 justify-start text-left hover:bg-transparent',
+        // Slack's green primary action: Join, Create.
+        join: 'bg-success text-white hover:bg-success/90',
+        // A filter tab above a list (All channels, Your channels, Archived).
+        tab: 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        'tab-active': 'bg-muted text-foreground',
         // The composer's send button: grey until there is something to send.
         send: 'bg-primary text-primary-foreground hover:bg-primary/90 data-[disabled]:bg-transparent data-[disabled]:text-muted-foreground data-[disabled]:opacity-100 aria-disabled:bg-transparent aria-disabled:text-muted-foreground aria-disabled:opacity-100',
       },
@@ -78,6 +91,9 @@ export const buttonVariants = cva(
         row: "h-7 gap-2 rounded-md px-2.5 text-[15px] [&_svg:not([class*='size-'])]:size-4",
         // A row of the DMs tab: two lines beside a 36 px avatar.
         dm: 'h-auto items-start gap-2.5 rounded-lg px-2 py-2 whitespace-normal',
+        // A row of the channel browser: two lines.
+        browse: 'h-auto flex-col items-start gap-0.5 rounded-md px-2 py-2.5 whitespace-normal',
+        tab: 'h-7 gap-1 rounded-full px-3 text-[13px] font-semibold',
         // A rail item: icon tile above a small label.
         rail: "h-auto flex-col gap-1 p-0 text-[11px] font-semibold [&_svg:not([class*='size-'])]:size-5",
       },

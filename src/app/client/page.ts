@@ -14,7 +14,7 @@ import { input } from '@/ui/input'
 import { textarea } from '@/ui/textarea'
 
 import { requireMember } from '../auth'
-import { Channel, MAX_MESSAGE, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, dmPartners, formatTime, inChannel, isMemberOf, readAt } from '../domain'
+import { Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, dmPartners, formatTime, inChannel, isMemberOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState } from '../store'
 import { box, optionRow, pageRoot, slack } from '../view/design'
@@ -46,6 +46,11 @@ export type Where = typeof Where.Type
 
 // MODEL
 
+export const DetailsTab = S.Literals(['about', 'members', 'settings'])
+export type DetailsTab = typeof DetailsTab.Type
+export const DetailsField = S.Literals(['name', 'topic', 'description'])
+export type DetailsField = typeof DetailsField.Type
+
 export const Model = S.Struct({
   me: Member,
   channelId: S.String,
@@ -74,6 +79,10 @@ export const Model = S.Struct({
   /** The message the delete confirmation is for. */
   deleting: S.NullOr(S.String),
   confirm: Dialog.Model,
+  /** Channel details (Slack's About / Members / Settings dialog). */
+  details: Dialog.Model,
+  about: S.Struct({ tab: DetailsTab, field: S.NullOr(DetailsField), value: S.String, query: S.String, isSaving: S.Boolean }),
+  isJoining: S.Boolean,
   /** Bumped to move focus (a forwarded focus Command). */
   focus: S.NullOr(S.Struct({ selector: S.String, seq: S.Number })),
   seq: S.Number,
@@ -122,6 +131,21 @@ export const Message = defineMessageUnion({
   ChangedConnection: { isConnected: S.Boolean },
   GotChannel: { channel: S.NullOr(Channel), members: S.Array(Member), messages: S.Array(ChatMessage), older: S.Number, nav: Nav, me: Member, now: S.Number },
   SucceededSend: {},
+  ClickedJoin: {},
+  ClickedOpenDetails: { tab: DetailsTab, field: S.NullOr(DetailsField) },
+  GotDetailsDialog: { message: Dialog.Message },
+  ClickedDetailsTab: { tab: DetailsTab },
+  ClickedEditField: { field: DetailsField },
+  ChangedField: { text: S.String },
+  SubmittedField: {},
+  ClickedCancelField: {},
+  ChangedPeopleQuery: { text: S.String },
+  ClickedAddPerson: { memberId: S.String },
+  ClickedLeave: {},
+  ClickedArchive: { isArchived: S.Boolean },
+  SucceededJoin: {},
+  SucceededField: {},
+  LeftChannel: {},
   FailedChange: { reason: S.String },
   CompletedChange: {},
   CompletedBrowserAction: {},
@@ -149,6 +173,16 @@ export const ClientMessage = S.Union([
   Message.ClickedCloseThread,
   Message.SubmittedThreadDraft,
   Message.ToggledAlsoSend,
+  Message.ClickedJoin,
+  Message.ClickedOpenDetails,
+  Message.ClickedDetailsTab,
+  Message.ClickedEditField,
+  Message.SubmittedField,
+  Message.ClickedCancelField,
+  Message.ClickedAddPerson,
+  Message.ClickedLeave,
+  Message.ClickedArchive,
+  S.TaggedStruct('GotDetailsDialog', { message: Dialog.Message.RequestedClose }),
   // The dialog's own bindings; its Command results never come from the page.
   S.TaggedStruct('GotConfirmDialog', { message: Dialog.Message.RequestedClose }),
 ])
@@ -232,6 +266,63 @@ export const ReplaceUrl = Command.define('ReplaceUrl', {
   execute: () => Effect.succeed(Message.CompletedBrowserAction()),
 })
 
+export const JoinChannel = Command.define('JoinChannel', {
+  args: { channelId: S.String, actorId: S.String },
+  messages: [Message.SucceededJoin, Message.FailedChange],
+  execute: ({ channelId, actorId }) =>
+    Workspace.use(workspace => workspace.joinChannel(channelId, actorId)).pipe(
+      Effect.as(Message.SucceededJoin()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const LeaveChannel = Command.define('LeaveChannel', {
+  args: { channelId: S.String, actorId: S.String },
+  messages: [Message.LeftChannel, Message.FailedChange],
+  execute: ({ channelId, actorId }) =>
+    Workspace.use(workspace => workspace.leaveChannel(channelId, actorId)).pipe(
+      Effect.as(Message.LeftChannel()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const UpdateChannel = Command.define('UpdateChannel', {
+  args: { channelId: S.String, field: DetailsField, value: S.String, actorId: S.String },
+  messages: [Message.SucceededField, Message.FailedChange],
+  execute: ({ channelId, field, value, actorId }) =>
+    Workspace.use(workspace => workspace.updateChannel(channelId, { [field]: value }, actorId)).pipe(
+      Effect.as(Message.SucceededField()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const AddToChannel = Command.define('AddToChannel', {
+  args: { channelId: S.String, memberId: S.String, actorId: S.String },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ channelId, memberId, actorId }) =>
+    Workspace.use(workspace => workspace.addToChannel(channelId, [memberId], actorId)).pipe(
+      Effect.as(Message.CompletedChange()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const SetArchived = Command.define('SetArchived', {
+  args: { channelId: S.String, isArchived: S.Boolean, actorId: S.String },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ channelId, isArchived, actorId }) =>
+    Workspace.use(workspace => workspace.setArchived(channelId, isArchived, actorId)).pipe(
+      Effect.as(Message.CompletedChange()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+/** Opens another page (a forwarded client command). */
+export const LoadUrl = Command.define('LoadUrl', {
+  args: { url: S.String },
+  messages: [Message.CompletedBrowserAction],
+  execute: () => Effect.succeed(Message.CompletedBrowserAction()),
+})
+
 /** The address of a conversation, with its open thread. */
 export const urlOf = (channelId: string, threadId: string | null) => `/client/${channelId}${threadId === null ? '' : `/thread/${threadId}`}`
 
@@ -250,6 +341,8 @@ export type Flags = Readonly<{
   threadId: string | null
 }>
 
+const closedAbout = { tab: 'about', field: null, value: '', query: '', isSaving: false } as const
+
 export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Message, Workspace> => ({
   model: {
     ...flags,
@@ -265,6 +358,9 @@ export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Messag
     emojiQuery: '',
     deleting: null,
     confirm: Dialog.init({ id: 'confirm-delete' }),
+    details: Dialog.init({ id: 'channel-details' }),
+    about: closedAbout,
+    isJoining: false,
     focus: null,
     seq: 0,
   },
@@ -347,6 +443,34 @@ const saveEdit = (model: Model): UpdateReturn => {
   return { model: { ...model, editing: { ...editing, isSaving: true } }, commands: [EditMessage({ messageId: message.id, text, actorId: model.me.id })] }
 }
 
+const withDetails = (model: Model, dialogUpdate: ReturnType<typeof Dialog.update>): UpdateReturn => ({
+  model: { ...model, details: dialogUpdate.model, about: dialogUpdate.model.isOpen ? model.about : closedAbout },
+  commands: Command.mapMessages(dialogUpdate.commands, message => Message.GotDetailsDialog({ message })),
+})
+
+/** The channel you may change from its details: a channel (not a DM) you are in. */
+const ownChannel = (model: Model) =>
+  model.channel !== null && model.channel.kind !== 'dm' && isMemberOf(model.channel, model.me.id) ? model.channel : null
+
+const fieldValue = (channel: Channel, field: DetailsField) => (field === 'name' ? channel.name : field === 'topic' ? channel.topic : channel.description)
+
+const fieldMax: Record<DetailsField, number> = { name: MAX_CHANNEL_NAME, topic: MAX_TOPIC, description: MAX_DESCRIPTION }
+
+const editField = (model: Model, field: DetailsField): Model => {
+  const channel = ownChannel(model)
+  if (channel === null || channel.isArchived || (field === 'name' && channel.name === DEFAULT_CHANNEL)) return model
+  return { ...model, about: { ...model.about, tab: 'about', field, value: fieldValue(channel, field), isSaving: false }, seq: model.seq + 1, focus: { selector: '#detail-field', seq: model.seq + 1 } }
+}
+
+const saveField = (model: Model): UpdateReturn => {
+  const channel = ownChannel(model)
+  const { field, value, isSaving } = model.about
+  if (channel === null || field === null || isSaving || !model.details.isOpen) return { model }
+  if (field === 'name' && channelSlug(value) === '') return { model: { ...model, notice: 'Give the channel a name.' } }
+  if (value.trim() === fieldValue(channel, field) || (field === 'name' && channelSlug(value) === channel.name)) return { model: { ...model, about: { ...model.about, field: null } } }
+  return { model: { ...model, about: { ...model.about, isSaving: true } }, commands: [UpdateChannel({ channelId: channel.id, field, value, actorId: model.me.id })] }
+}
+
 const withConfirm = (model: Model, dialogUpdate: ReturnType<typeof Dialog.update>): UpdateReturn => ({
   model: { ...model, confirm: dialogUpdate.model, deleting: dialogUpdate.model.isOpen ? model.deleting : null },
   commands: Command.mapMessages(dialogUpdate.commands, message => Message.GotConfirmDialog({ message })),
@@ -385,7 +509,7 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       ChangedDraft: ({ text }) => ({ model: { ...model, draft: text.slice(0, MAX_MESSAGE + 100) } }),
       SubmittedDraft: () => send(model),
       PressedEnter: ({ targetId }) =>
-        targetId === 'composer' ? send(model) : targetId === 'thread-composer' ? sendReply(model) : targetId === 'edit-composer' ? saveEdit(model) : { model },
+        targetId === 'detail-field' ? saveField(model) : targetId === 'composer' ? send(model) : targetId === 'thread-composer' ? sendReply(model) : targetId === 'edit-composer' ? saveEdit(model) : { model },
       PressedEscape: () => escape(model),
       // Up in an empty composer edits your last message (Slack).
       PressedUp: ({ targetId }) => {
@@ -447,8 +571,46 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       GotChannel: slice => markRead({ model: withoutGone({ ...model, ...slice }) }),
       // Sent: the composer empties and the "New" line goes (you are up to date).
       SucceededSend: () => ({ model: { ...model, draft: '', isSending: false, readMarker: Number.MAX_SAFE_INTEGER, seq: model.seq + 1, focus: { selector: '#composer', seq: model.seq + 1 } } }),
+      ClickedJoin: () => {
+        const channel = model.channel
+        if (channel === null || channel.kind !== 'public' || channel.isArchived || isMemberOf(channel, model.me.id) || model.isJoining) return { model }
+        return { model: { ...model, isJoining: true }, commands: [JoinChannel({ channelId: channel.id, actorId: model.me.id })] }
+      },
+      SucceededJoin: () => ({ model: withFocus({ ...model, isJoining: false }, '#composer') }),
+      ClickedOpenDetails: ({ tab, field }) => {
+        if (model.channel === null || model.channel.kind === 'dm') return { model }
+        const opened = withDetails({ ...model, overlay: null, about: { ...closedAbout, tab } }, Dialog.open(model.details))
+        return field === null ? opened : { ...opened, model: editField(opened.model, field) }
+      },
+      GotDetailsDialog: ({ message }) => withDetails(model, Dialog.update(model.details, message)),
+      ClickedDetailsTab: ({ tab }) => ({ model: { ...model, about: { ...model.about, tab, field: null, query: '' } } }),
+      ClickedEditField: ({ field }) => ({ model: editField(model, field) }),
+      ChangedField: ({ text }) => (model.about.field === null ? { model } : { model: { ...model, about: { ...model.about, value: text.slice(0, fieldMax[model.about.field] + 20) } } }),
+      SubmittedField: () => saveField(model),
+      ClickedCancelField: () => ({ model: { ...model, about: { ...model.about, field: null } } }),
+      SucceededField: () => ({ model: { ...model, about: { ...model.about, field: null, isSaving: false } } }),
+      ChangedPeopleQuery: ({ text }) => ({ model: { ...model, about: { ...model.about, query: text.slice(0, 80) } } }),
+      ClickedAddPerson: ({ memberId }) => {
+        const channel = ownChannel(model)
+        if (channel === null || channel.isArchived || isMemberOf(channel, memberId) || !model.members.some(member => member.id === memberId)) return { model }
+        return { model, commands: [AddToChannel({ channelId: channel.id, memberId, actorId: model.me.id })] }
+      },
+      ClickedLeave: () => {
+        const channel = ownChannel(model)
+        if (channel === null) return { model }
+        if (channel.name === DEFAULT_CHANNEL) return { model: { ...model, notice: `Everyone stays in #${DEFAULT_CHANNEL}.` } }
+        const closed = withDetails(model, Dialog.close(model.details))
+        return { ...closed, commands: [...(closed.commands ?? []), LeaveChannel({ channelId: channel.id, actorId: model.me.id })] }
+      },
+      LeftChannel: () => ({ model, commands: [LoadUrl({ url: '/' })] }),
+      ClickedArchive: ({ isArchived }) => {
+        const channel = ownChannel(model)
+        if (channel === null || channel.name === DEFAULT_CHANNEL || channel.isArchived === isArchived) return { model }
+        const closed = withDetails(model, Dialog.close(model.details))
+        return { ...closed, commands: [...(closed.commands ?? []), SetArchived({ channelId: channel.id, isArchived, actorId: model.me.id })] }
+      },
       FailedChange: ({ reason }) => ({
-        model: { ...model, isSending: false, editing: model.editing === null ? null : { ...model.editing, isSaving: false }, thread: model.thread === null ? null : { ...model.thread, isSending: false }, notice: reason },
+        model: { ...model, isJoining: false, about: { ...model.about, isSaving: false }, isSending: false, editing: model.editing === null ? null : { ...model.editing, isSaving: false }, thread: model.thread === null ? null : { ...model.thread, isSending: false }, notice: reason },
       }),
       CompletedChange: () => ({ model }),
       CompletedBrowserAction: () => ({ model }),
@@ -714,6 +876,80 @@ const overlayView = (model: Model, h: HtmlBuilder<Message>): Html =>
           model.overlay.kind === 'emoji' ? emojiPicker(model, model.overlay.anchor, h) : actionsMenu(model.overlay.messageId, model.overlay.where, model.overlay.anchor, h),
         ] }, h)
 
+const fieldLabel: Record<DetailsField, string> = { name: 'Channel name', topic: 'Topic', description: 'Description' }
+
+const aboutField = (model: Model, channel: Channel, field: DetailsField, slots: Dialog.DialogSlots, h: HtmlBuilder<Message>): Html => {
+  const value = fieldValue(channel, field)
+  const canEdit = isMemberOf(channel, model.me.id) && !channel.isArchived && !(field === 'name' && channel.name === DEFAULT_CHANNEL)
+  return box({ class: 'flex flex-col gap-1 border-b px-4 py-3 last:border-b-0', attributes: [h.DataAttribute('detail', field)], children: model.about.field === field
+      ? [box({ as: 'form', class: 'flex flex-col gap-2', attributes: [h.OnSubmit(Message.SubmittedField())], children: [
+          box({ as: 'label', class: 'text-[14px] font-bold', attributes: [h.For('detail-field')], children: [fieldLabel[field]] }, h),
+          input({ id: 'detail-field', value: model.about.value, autocomplete: 'off', initialFocus: slots.initialFocusAttributes(), ariaLabel: fieldLabel[field], onInput: text => Message.ChangedField({ text }) }, h),
+          box({ class: 'flex justify-end gap-2', children: [
+              button({ variant: 'outline', size: 'sm', onClick: Message.ClickedCancelField(), children: ['Cancel'] }, h),
+              button({ id: 'save-detail', variant: 'join', size: 'sm', type: 'submit', isDisabled: model.about.isSaving, children: ['Save'] }, h),
+            ] }, h),
+        ] }, h)]
+      : [box({ class: 'flex items-center gap-2', children: [
+            box({ as: 'span', class: 'flex-1 text-[14px] font-bold', children: [fieldLabel[field]] }, h),
+            ...(canEdit ? [button({ variant: 'link', size: 'xs', ariaLabel: `Edit ${fieldLabel[field].toLowerCase()}`, onClick: Message.ClickedEditField({ field }), children: ['Edit'] }, h)] : []),
+          ] }, h),
+        box({ as: 'p', class: value === '' ? 'text-[14px] text-muted-foreground' : 'min-w-0 text-[14px] break-words', children: [value === '' ? (field === 'topic' ? 'Add a topic' : field === 'description' ? 'Add a description' : '') : field === 'name' ? `#${value}` : value] }, h)] }, h)
+}
+
+const memberRow = (member: Member, trailing: ReadonlyArray<Html>, h: HtmlBuilder<Message>): Html =>
+  box({ as: 'li', class: 'flex items-center gap-2.5 rounded-md px-2 py-1.5', attributes: [h.Key(member.id), h.DataAttribute('person', member.id)], children: [
+      avatar(member, h, 'md'),
+      box({ class: 'flex min-w-0 flex-1 flex-col', children: [box({ as: 'span', class: 'min-w-0 truncate text-[15px] font-bold', children: [member.name] }, h), box({ as: 'span', class: 'min-w-0 truncate text-[13px] text-muted-foreground', children: [member.title] }, h)] }, h),
+      ...trailing,
+    ] }, h)
+
+const membersTab = (model: Model, channel: Channel, h: HtmlBuilder<Message>): Html => {
+  const query = model.about.query.trim().toLowerCase()
+  const matches = (member: Member) => query === '' || member.name.toLowerCase().includes(query) || member.email.toLowerCase().includes(query)
+  const canAdd = isMemberOf(channel, model.me.id) && !channel.isArchived
+  const inside = model.members.filter(member => isMemberOf(channel, member.id) && matches(member))
+  const outside = canAdd && query !== '' ? model.members.filter(member => !isMemberOf(channel, member.id) && matches(member)) : []
+  return box({ class: 'flex flex-col gap-3', children: [
+      input({ id: 'people-query', type: 'search', value: model.about.query, placeholder: canAdd ? 'Find or add people' : 'Find members', ariaLabel: canAdd ? 'Find or add people' : 'Find members', autocomplete: 'off', onInput: text => Message.ChangedPeopleQuery({ text }) }, h),
+      box({ as: 'ul', class: 'flex max-h-[320px] flex-col overflow-y-auto', attributes: [h.Id('channel-people'), h.AriaLabel('Members')], children: [
+          ...inside.map(member => memberRow(member, member.id === model.me.id ? [box({ as: 'span', class: 'text-[13px] text-muted-foreground', children: ['you'] }, h)] : [], h)),
+          ...outside.map(member => memberRow(member, [button({ variant: 'outline', size: 'xs', ariaLabel: `Add ${member.name}`, onClick: Message.ClickedAddPerson({ memberId: member.id }), children: ['Add'] }, h)], h)),
+          ...(inside.length === 0 && outside.length === 0 ? [box({ as: 'li', class: 'py-6 text-center text-[14px] text-muted-foreground', children: ['No one matches.'] }, h)] : []),
+        ] }, h),
+    ] }, h)
+}
+
+const detailsDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
+  const channel = model.channel
+  if (channel === null || channel.kind === 'dm') return box({}, h)
+  const creator = model.members.find(member => member.id === channel.createdBy)
+  const isMember = isMemberOf(channel, model.me.id)
+  const tab = (id: DetailsTab, label: string) =>
+    button({ variant: model.about.tab === id ? 'tab-active' : 'tab', size: 'tab', isPressed: model.about.tab === id, onClick: Message.ClickedDetailsTab({ tab: id }), children: [label] }, h)
+  return Dialog.dialog({
+    model: model.details,
+    toParentMessage: message => Message.GotDetailsDialog({ message }),
+    title: `${channel.kind === 'private' ? '' : '#'}${channel.name}`,
+    content: slots => [
+      box({ class: 'flex flex-col gap-4', attributes: [h.Id('details-body')], children: [
+          box({ class: 'flex items-center gap-1', attributes: [h.AriaLabel('Details tabs')], children: [tab('about', 'About'), tab('members', `Members ${channel.memberIds.length}`), ...(isMember ? [tab('settings', 'Settings')] : [])] }, h),
+          model.about.tab === 'members'
+            ? membersTab(model, channel, h)
+            : model.about.tab === 'settings' && isMember
+              ? box({ class: 'flex flex-col gap-2', children: channel.name === DEFAULT_CHANNEL
+                  ? [box({ as: 'p', class: 'text-[14px] text-muted-foreground', children: [`#${DEFAULT_CHANNEL} includes everyone and cannot be archived.`] }, h)]
+                  : [button({ id: 'archive-channel', variant: 'danger-text', onClick: Message.ClickedArchive({ isArchived: !channel.isArchived }), leadingIcon: Icon.icon('archive', {}, h), children: [channel.isArchived ? 'Unarchive channel' : 'Archive channel for everyone'] }, h)] }, h)
+              : box({ class: 'flex flex-col gap-3', children: [
+                  box({ class: 'rounded-lg border', children: [aboutField(model, channel, 'name', slots, h), aboutField(model, channel, 'topic', slots, h), aboutField(model, channel, 'description', slots, h),
+                      box({ class: 'px-4 py-3', children: [box({ as: 'p', class: 'text-[14px] font-bold', children: ['Created by'] }, h), box({ as: 'p', class: 'text-[14px]', children: [`${creator?.name ?? 'Someone'} on ${dayLabel(channel.createdAt, model.now)}`] }, h)] }, h)] }, h),
+                  ...(isMember && channel.name !== DEFAULT_CHANNEL ? [button({ id: 'leave-channel', variant: 'danger-text', onClick: Message.ClickedLeave(), leadingIcon: Icon.icon('log-out', {}, h), children: [`Leave ${channel.kind === 'private' ? '' : '#'}${channel.name}`] }, h)] : []),
+                ] }, h),
+        ] }, h),
+    ],
+  }, h)
+}
+
 const confirmDialog = (model: Model, h: HtmlBuilder<Message>): Html =>
   Dialog.dialog(
     {
@@ -846,17 +1082,20 @@ const headerView = (model: Model, h: HtmlBuilder<Message>): Html => {
   const people = channel === null ? [] : channel.memberIds.map(id => model.members.find(member => member.id === id)).filter(member => member !== undefined)
   return box({ as: 'header', class: 'shrink-0 border-b', attributes: [h.Id('conversation-header')], children: [
       box({ class: 'flex min-h-[49px] items-center gap-2 px-4', children: [
-          box({ as: 'h1', class: 'flex min-w-0 items-center gap-1 text-[18px] font-black', children: [
-              ...(channel === null ? [] : channel.kind === 'dm' ? [] : [Icon.icon(channel.kind === 'private' ? 'lock' : 'hash', { class: 'size-[18px]' }, h)]),
-              box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h),
-            ] }, h),
-          ...(channel === null || channel.topic === '' ? [] : [box({ as: 'span', class: 'min-w-0 truncate text-[13px] text-muted-foreground', attributes: [h.Title(channel.topic)], children: [channel.topic] }, h)]),
+          box({ as: 'h1', class: 'flex min-w-0 items-center gap-1 text-[18px] font-black', children: channel === null || channel.kind === 'dm'
+              ? [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)]
+              : [button({ id: 'channel-title', variant: 'channel-title', size: 'sm', ariaLabel: `Channel details for #${channel.name}`, onClick: Message.ClickedOpenDetails({ tab: 'about', field: null }), leadingIcon: Icon.icon(channel.kind === 'private' ? 'lock' : 'hash', { class: 'size-[18px]' }, h), trailingIcon: Icon.icon('chevron-down', { class: 'size-4' }, h), children: [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)] }, h)] }, h),
+          ...(channel === null || channel.kind === 'dm'
+            ? []
+            : channel.topic === ''
+              ? isMemberOf(channel, model.me.id) && !channel.isArchived ? [button({ id: 'add-topic', variant: 'topic', size: 'xs', onClick: Message.ClickedOpenDetails({ tab: 'about', field: 'topic' }), children: ['Add a topic'] }, h)] : []
+              : [button({ id: 'channel-topic', variant: 'topic', size: 'xs', title: channel.topic, onClick: Message.ClickedOpenDetails({ tab: 'about', field: isMemberOf(channel, model.me.id) && !channel.isArchived ? 'topic' : null }), children: [box({ as: 'span', class: 'min-w-0 truncate', children: [channel.topic] }, h)] }, h)]),
           box({ class: 'flex-1' }, h),
           ...(channel === null || channel.kind === 'dm'
             ? []
-            : [box({ class: 'flex items-center gap-1 rounded-md border px-1.5 py-1', attributes: [h.Title(`${people.length} members`)], children: [
+            : [button({ id: 'channel-members', variant: 'outline', size: 'sm', ariaLabel: `View all ${people.length} members`, title: `${people.length} members`, onClick: Message.ClickedOpenDetails({ tab: 'members', field: null }), children: [
                 box({ class: 'flex -space-x-1', children: people.slice(0, 3).map(member => avatar(member, h, 'sm', 'ring-2 ring-background')) }, h),
-                box({ as: 'span', class: 'px-1 text-[13px] font-semibold text-muted-foreground', children: [String(people.length)] }, h),
+                box({ as: 'span', class: 'px-0.5 text-[13px] font-semibold text-muted-foreground', children: [String(people.length)] }, h),
               ] }, h)]),
         ] }, h),
       box({ as: 'nav', class: 'flex h-9 items-end gap-4 px-4 text-[13px]', attributes: [h.AriaLabel('Conversation tabs')], children: [
@@ -875,8 +1114,16 @@ const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
                   button({ id: 'send', variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send now', title: 'Send now', isDisabled: model.draft.trim() === '' || model.isSending, children: [Icon.icon('send', {}, h)] }, h),
                 ] }, h),
             ] }, h)
-        : box({ class: 'mx-5 mb-5 rounded-lg border bg-muted px-4 py-5 text-center text-[15px]', attributes: [h.Id('composer-readonly')], children: [
-            model.channel === null ? 'This conversation does not exist or is private.' : `You are viewing #${model.channel.name}. Only its members write here.`,
+        : box({ class: 'mx-5 mb-5 flex flex-col items-center gap-3 rounded-lg border bg-muted px-4 py-5 text-center text-[15px]', attributes: [h.Id('composer-readonly')], children: [
+            box({ as: 'p', children: [model.channel === null ? 'This conversation does not exist or is private.' : model.channel.isArchived ? `You are viewing #${model.channel.name}, an archived channel.` : `You are viewing #${model.channel.name}.`] }, h),
+            ...(model.channel === null || model.channel.kind === 'dm'
+              ? []
+              : [box({ class: 'flex items-center gap-2', children: [
+                  button({ variant: 'outline', size: 'sm', onClick: Message.ClickedOpenDetails({ tab: 'about', field: null }), children: ['Details'] }, h),
+                  ...(model.channel.isArchived
+                    ? isMemberOf(model.channel, model.me.id) ? [button({ id: 'unarchive', variant: 'outline', size: 'sm', onClick: Message.ClickedArchive({ isArchived: false }), children: ['Unarchive channel'] }, h)] : []
+                    : model.channel.kind === 'public' ? [button({ id: 'join-channel', variant: 'join', size: 'sm', isDisabled: model.isJoining, onClick: Message.ClickedJoin(), children: ['Join channel'] }, h)] : []),
+                ] }, h)]),
           ] }, h),
     ] }, h)
 
@@ -893,7 +1140,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
           box({ as: 'main', class: slack.main, attributes: model.thread === null ? [] : [h.DataAttribute('split', '')], children: [
               region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id], render: () => headerView(model, h) }),
               region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id], render: () => listView(model, h) }),
-              region(h, { id: 'composer-area', deps: [model.draft, model.isSending, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
+              region(h, { id: 'composer-area', deps: [model.draft, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
             ] }, h),
           region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now], render: () => threadView(model, h) }),
         ] }, h),
@@ -911,6 +1158,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
             ] }, h),
       }),
       region(h, { id: 'overlay', deps: [model.overlay, model.emojiQuery], render: () => overlayView(model, h) }),
+      region(h, { id: 'details', deps: [model.details, model.about, model.channel, model.members, model.me.id], render: () => box({ attributes: [h.Id('details')], children: [detailsDialog(model, h)] }, h) }),
       region(h, { id: 'confirm', deps: [model.confirm, model.deleting, model.messages, model.members], render: () => box({ attributes: [h.Id('confirm')], children: [confirmDialog(model, h)] }, h) }),
       region(h, {
         id: 'notice',
@@ -964,6 +1212,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   clientCommands: {
     FocusElement: ({ selector }) => (typeof selector === 'string' ? { focus: selector } : undefined),
     ReplaceUrl: ({ url }) => (typeof url === 'string' ? { replaceUrl: url } : undefined),
+    LoadUrl: ({ url }) => (typeof url === 'string' && url.startsWith('/') ? { load: url } : undefined),
   },
-  snapshotDeps: model => [model.draft, model.thread, model.readMarker, model.notice, model.collapsed, model.editing, model.overlay, model.emojiQuery, model.deleting, model.confirm],
+  snapshotDeps: model => [model.draft, model.thread, model.readMarker, model.notice, model.collapsed, model.editing, model.overlay, model.emojiQuery, model.deleting, model.confirm, model.details, model.about],
 }

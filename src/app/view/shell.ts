@@ -164,7 +164,10 @@ export const sidebar = <Msg>(props: SidebarProps<Msg>, h: HtmlBuilder<Msg>): Htm
           box({ as: 'nav', class: 'mt-2 flex flex-col', attributes: [h.AriaLabel('Views')], children: [
               buttonLink({ href: '/threads', variant: props.activeId === 'threads' ? 'sidebar-active' : 'sidebar', size: 'row', leadingIcon: Icon.icon('message-square-text', {}, h), children: [box({ as: 'span', class: 'min-w-0 flex-1 truncate text-left', children: ['Threads'] }, h)] }, h),
             ] }, h),
-          section('channels', 'Channels', props.nav.channels.map(row => sidebarRow(row, props, h)), props, h),
+          section('channels', 'Channels', [
+              ...props.nav.channels.map(row => sidebarRow(row, props, h)),
+              buttonLink({ href: '/channels', variant: props.activeId === 'channels' ? 'sidebar-active' : 'sidebar', size: 'row', leadingIcon: Icon.icon('plus', {}, h), children: [box({ as: 'span', class: 'min-w-0 flex-1 truncate text-left', children: ['Add channels'] }, h)] }, h),
+            ], props, h),
           section('dms', 'Direct messages', props.nav.dms.map(row => sidebarRow(row, props, h)), props, h),
         ] }, h),
     ] }, h)

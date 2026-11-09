@@ -66,3 +66,30 @@
   .composer { margin: 0 20px 20px; border: 1px solid var(--input); border-radius: 8px; background: var(--background); }
   .composer:focus-within { border-color: color-mix(in oklab, var(--foreground) 45%, transparent); box-shadow: 0 1px 4px color-mix(in oklab, var(--foreground) 12%, transparent); }
 }
+
+.browse-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.browse-row [data-row-action] {
+  opacity: 0;
+}
+
+.browse-row:focus-within [data-row-action] {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .browse-row:hover {
+    background: var(--muted);
+  }
+
+  .browse-row:hover [data-row-action] {
+    opacity: 1;
+  }
+}

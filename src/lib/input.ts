@@ -1,5 +1,5 @@
 import { Input as InputPrimitive } from '@foldkit/ui'
-import type { Attribute, Html, HtmlBuilder } from 'foldkit/html'
+import type { Attribute, ChildAttribute, Html, HtmlBuilder } from 'foldkit/html'
 
 export type InputMode =
   | 'none'
@@ -45,6 +45,8 @@ export type InputBehaviorProps<Msg> = Readonly<{
    *  event the props do not name (`h.OnBlur`, `h.OnKeyDown`), a data or ARIA
    *  attribute. */
   attributes?: ReadonlyArray<Attribute<Msg>>
+  /** A dialog's `initialFocusAttributes()`, so the dialog focuses this input when it opens. */
+  initialFocus?: ReadonlyArray<ChildAttribute>
 }>
 
 export type InputVisualAttributes<Msg> = Readonly<{
@@ -118,6 +120,7 @@ export const renderInput = <Msg>(
             : [h.AriaDescribedBy(describedBy)]),
           ...visual.input,
           ...(props.attributes ?? []),
+          ...(props.initialFocus ?? []),
         ])
 
         if (props.label === undefined && props.description === undefined)

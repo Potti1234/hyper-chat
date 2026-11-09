@@ -103,4 +103,5 @@ export const slack = {
   threadCard: 'thread-card',
   dmList: 'dm-list',
   toField: 'recipient-field',
+  browseRow: 'browse-row',
 } as const

@@ -45,17 +45,17 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 
 | Feature | Slack | hyper-chat |
 | --- | --- | --- |
-| Public channels | `#name`, anyone can browse and join | **planned** |
-| Private channels | 🔒 lock icon, invite only | **planned** |
-| Direct messages | 1:1, including a DM with yourself | **planned** |
-| Group DMs | Up to 9 people | **planned** |
-| Create channel | Dialog: name (lower case, dashes), visibility, description | **planned** |
-| Browse channels | List with search, member counts, Join | **planned** |
-| Join / leave | Button in the channel; "joined #x" system message | **planned** |
-| Topic / description | Edited in channel details; shown in the header | **planned** |
-| Channel details | Dialog with tabs: About, Members, Settings (rename, archive, leave) | **planned** |
-| Add people to channel | From details → Members | **planned** |
-| Archive channel | Read-only, hidden from sidebar | **planned** |
+| Public channels | `#name`, anyone can browse and join | **done** |
+| Private channels | 🔒 lock icon, invite only | Lock icon, visible to members only — **done** |
+| Direct messages | 1:1, including a DM with yourself | **done** |
+| Group DMs | Up to 9 people | **done** |
+| Create channel | Dialog: name (lower case, dashes), visibility, description | `/channels?new` — **done** |
+| Browse channels | List with search, member counts, Join | `/channels` (all / joined / archived) — **done** |
+| Join / leave | Button in the channel; "joined #x" system message | Join button for visitors, Leave in details (`#general` can't be left) — **done** (no system message) |
+| Topic / description | Edited in channel details; shown in the header | **done** |
+| Channel details | Dialog with tabs: About, Members, Settings (rename, archive, leave) | **done** |
+| Add people to channel | From details → Members | **done** |
+| Archive channel | Read-only, hidden from sidebar | Any member can archive (no admin roles yet) — **done** |
 | Star / favourite | Starred section at the top of the sidebar | **planned** |
 | Mute | Muted channels are greyed and never bold | **planned** |
 | Custom sidebar sections | Drag channels into own sections | **out of scope** (fixed sections) |
