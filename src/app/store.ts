@@ -14,6 +14,7 @@ import {
   addMember,
   clearDemo,
   markRead,
+  openConversation,
   editMessage,
   deleteMessage,
   toggleReaction,
@@ -68,6 +69,8 @@ export class Workspace extends Context.Service<
     readonly addMember: (input: NewAccount) => Effect.Effect<Member, InvalidChange>
     readonly setTheme: (memberId: string, isDark: boolean) => Effect.Effect<void>
     readonly setPreset: (memberId: string, theme: string) => Effect.Effect<void>
+    /** The direct message with these people, started if there is none. */
+    readonly openConversation: (memberIds: ReadonlyArray<string>, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly postMessage: (channelId: string, text: string, actorId: string, options?: PostOptions) => Effect.Effect<Message, InvalidChange>
     readonly markRead: (channelId: string, memberId: string) => Effect.Effect<void>
     readonly editMessage: (messageId: string, text: string, actorId: string) => Effect.Effect<Message, InvalidChange>
@@ -98,6 +101,7 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
     }),
   setTheme: (memberId, isDark) => backend.run(setTheme(memberId, isDark)),
   setPreset: (memberId, theme) => backend.run(setPreset(memberId, theme)),
+  openConversation: (memberIds, actorId) => backend.run(openConversation(memberIds, actorId)),
   postMessage: (channelId, text, actorId, options) => backend.run(postMessage(channelId, text, actorId, options)),
   markRead: (channelId, memberId) => backend.run(markRead(channelId, memberId)),
   editMessage: (messageId, text, actorId) => backend.run(editMessage(messageId, text, actorId)),

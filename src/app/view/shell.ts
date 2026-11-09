@@ -158,6 +158,7 @@ export const sidebar = <Msg>(props: SidebarProps<Msg>, h: HtmlBuilder<Msg>): Htm
   box({ as: 'aside', class: slack.sidebar, attributes: [h.Id('sidebar'), h.AriaLabel('Conversations')], children: [
       box({ as: 'header', class: 'flex h-12 shrink-0 items-center gap-1 px-3', children: [
           box({ as: 'h2', class: 'flex min-w-0 flex-1 items-center gap-1 truncate text-[18px] font-bold text-sidebar-accent-foreground', children: [WORKSPACE_NAME, Icon.chevronDown({ class: 'size-4' }, h)] }, h),
+          buttonLink({ href: '/dms', variant: 'sidebar-icon', size: 'icon-sm', ariaLabel: 'New message', children: [Icon.icon('square-pen', {}, h)] }, h),
         ] }, h),
       box({ class: 'min-h-0 flex-1 overflow-y-auto px-2 pb-4', attributes: [h.DataAttribute('keep-scroll', 'sidebar')], children: [
           box({ as: 'nav', class: 'mt-2 flex flex-col', attributes: [h.AriaLabel('Views')], children: [

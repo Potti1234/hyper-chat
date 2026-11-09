@@ -81,6 +81,26 @@ export const setPreset =
   data =>
     unchanged(undefined, updateMember(data, memberId, { theme }))
 
+// CONVERSATIONS
+
+/** Slack's limit for a group direct message, you included. */
+export const MAX_DM_PEOPLE = 9
+
+/** The direct message between you and these people (only you: your notes),
+ *  started if there is none yet. Each set of people has one. */
+export const openConversation =
+  (memberIds: ReadonlyArray<string>, actorId: string): Op<Channel, InvalidChange> =>
+  (data, { at, id }) => {
+    const people = [...new Set([actorId, ...memberIds])]
+    if (!people.every(memberId => data.members.some(member => member.id === memberId))) return invalid('Pick people from your workspace.')
+    if (people.length > MAX_DM_PEOPLE) return invalid(`A direct message has up to ${MAX_DM_PEOPLE} people, you included.`)
+    const key = [...people].sort().join()
+    const existing = data.channels.find(channel => channel.kind === 'dm' && !channel.isArchived && [...channel.memberIds].sort().join() === key)
+    if (existing !== undefined) return unchanged(existing, data)
+    const channel: Channel = { id: id('dm'), name: '', kind: 'dm', topic: '', description: '', memberIds: people, createdBy: actorId, createdAt: at, isArchived: false, isDemo: false }
+    return Effect.succeed([channel, { ...data, channels: [...data.channels, channel] }] as const)
+  }
+
 // MESSAGES
 
 export const findChannel = (data: WorkspaceData, channelId: string): Effect.Effect<Channel, InvalidChange> => {

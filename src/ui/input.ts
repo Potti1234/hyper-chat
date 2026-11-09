@@ -20,6 +20,8 @@ export const inputVariants = {
   'inline-lg': 'h-12 border-0 bg-transparent text-[15px] shadow-none focus-visible:ring-0 md:text-[15px] dark:bg-transparent',
   compact: 'h-7 text-[13px] md:text-[13px]',
   dense: 'h-8 text-[13px] md:text-[13px]',
+  // Find a DM: on the sidebar's colours.
+  'sidebar-search': 'h-8 border-sidebar-border bg-sidebar-accent/40 text-[13px] text-sidebar-accent-foreground shadow-none placeholder:text-sidebar-foreground/70 md:text-[13px] dark:bg-sidebar-accent/40',
   search: 'h-7 pl-7 text-[13px] shadow-none md:text-[13px]',
   'title-xl': 'h-auto border-0 px-0 py-1 text-[32px] font-bold tracking-[-0.02em] shadow-none focus-visible:ring-0 md:text-[32px] dark:bg-transparent',
   'title-lg': 'h-auto border-0 px-0 py-1 text-[22px] font-semibold tracking-[-0.01em] shadow-none focus-visible:ring-0 aria-invalid:ring-0 md:text-[22px] dark:bg-transparent',

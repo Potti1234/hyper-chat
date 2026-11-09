@@ -104,6 +104,12 @@ try {
         }
       }
     }
+    // The To field's people suggestions, in the DMs tab.
+    await live(page, () => page.goto(`${base}/dms`))
+    await page.click('#to-input')
+    await page.keyboard.type('a')
+    if (await page.waitForSelector('#people-picker', { state: 'visible', timeout: TIMEOUT }).then(() => true, () => false)) await measure(page, '#people-picker', `${size.width}×${size.height} /dms: people suggestions`)
+    else failures.push(`${size.width}×${size.height} /dms: no people suggestions`)
     await context.close()
   }
 } finally {

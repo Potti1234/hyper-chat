@@ -101,4 +101,6 @@ export const slack = {
   thread: 'slack-thread',
   replyDivider: 'reply-divider',
   threadCard: 'thread-card',
+  dmList: 'dm-list',
+  toField: 'recipient-field',
 } as const

@@ -164,6 +164,32 @@ try {
   await avery.keyboard.press('Enter')
   check('a new message bolds the channel for someone elsewhere', await until(blake, () => [...document.querySelectorAll('#sidebar a')].some(link => link.textContent.includes('general') && getComputedStyle(link).fontWeight >= 700)))
 
+  // Direct messages
+  await visit(blake, '/dms')
+  await visit(avery, '/dms')
+  check('the DMs tab lists your direct messages', (await avery.locator('#dm-list nav a').count()) >= 3)
+  check('the To field takes focus', await until(avery, () => document.activeElement?.id === 'to-input'))
+  await avery.keyboard.type('bla')
+  check('typing suggests people', await until(avery, () => document.querySelector('#people-picker')?.textContent.includes('Blake Okafor')))
+  await avery.keyboard.press('Enter')
+  check('Enter picks the suggestion', await until(avery, () => document.querySelector('#recipient-field [data-person="mem_blake"]') !== null))
+  check('it knows the conversation you already have', await until(avery, () => document.querySelector('#new-message-body')?.textContent.includes('You already have a conversation')))
+  await avery.keyboard.type('fra')
+  await until(avery, () => document.querySelector('#people-picker')?.textContent.includes('Frankie'))
+  await avery.locator('#people-picker [role=option]').first().click()
+  check('a click picks someone too', await until(avery, () => document.querySelector('#recipient-field [data-person="mem_frankie"]') !== null))
+  const group = `Group ${Date.now()}`
+  await avery.click('#dm-draft')
+  await avery.keyboard.type(group)
+  await avery.keyboard.press('Enter')
+  await avery.waitForURL(/\/client\/dm_/, { timeout: 5000 }).catch(() => {})
+  check('sending opens the group conversation', /\/client\/dm_/.test(avery.url()))
+  check('the message is in it', await sees(avery, group))
+  check('it reaches the others in their DMs list', await until(blake, group => document.querySelector('#dm-list nav a')?.textContent.includes(group), group))
+  await visit(avery, '/dms')
+  await avery.fill('#dm-filter', 'casey')
+  check('"Find a DM" filters the list', await until(avery, () => [...document.querySelectorAll('#dm-list nav a')].every(link => link.textContent.includes('Casey'))))
+
   for (const { errors } of people) for (const error of errors) check('no browser errors', false, error)
 } finally {
   await browser.close()

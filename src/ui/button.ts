@@ -49,6 +49,11 @@ export const buttonVariants = cva(
         'replied-to': 'h-5 max-w-full min-w-0 justify-start overflow-hidden px-0 text-[12px] font-normal text-link hover:underline',
         // The conversation a card of the Threads view is in.
         'thread-channel': 'h-6 justify-start self-start px-0 has-data-[icon=inline-start]:pl-0 text-[15px] font-bold text-foreground hover:underline',
+        // A direct message in the DMs tab: avatar, name and time, last message.
+        'dm-row': 'w-full justify-start text-left text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+        'dm-row-unread': 'w-full justify-start text-left font-bold text-sidebar-accent-foreground hover:bg-sidebar-accent',
+        // Someone picked in the To field; clicking takes them out.
+        'person-chip': 'h-7 gap-1.5 rounded-md bg-link/10 px-1.5 text-[14px] font-semibold text-link hover:bg-link/20',
         // The composer's send button: grey until there is something to send.
         send: 'bg-primary text-primary-foreground hover:bg-primary/90 data-[disabled]:bg-transparent data-[disabled]:text-muted-foreground data-[disabled]:opacity-100 aria-disabled:bg-transparent aria-disabled:text-muted-foreground aria-disabled:opacity-100',
       },
@@ -71,6 +76,8 @@ export const buttonVariants = cva(
         'icon-md': 'size-7 rounded-[min(var(--radius-md),10px)]',
         // A sidebar row: 28 px, Slack's 15 px label.
         row: "h-7 gap-2 rounded-md px-2.5 text-[15px] [&_svg:not([class*='size-'])]:size-4",
+        // A row of the DMs tab: two lines beside a 36 px avatar.
+        dm: 'h-auto items-start gap-2.5 rounded-lg px-2 py-2 whitespace-normal',
         // A rail item: icon tile above a small label.
         rail: "h-auto flex-col gap-1 p-0 text-[11px] font-semibold [&_svg:not([class*='size-'])]:size-5",
       },
