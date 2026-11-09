@@ -1,0 +1,7 @@
+node_modules
+public/styles.css
+public/assets
+.hyper-sessions/
+.env
+output/
+.playwright-mcp/

@@ -1,0 +1,9 @@
+/* Component CSS of the app's owned design layer (crease.lock.json:
+   hyperchat/view). Every rule starts from a class the owning files render
+   (view/design.ts). */
+@layer components {
+  /* The page root (pageRoot): app type size, thin scrollbars, no native search clear button. */
+  .app-root { font-size: 13px; font-family: var(--font-sans); }
+  .app-root, .app-root * { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent) transparent; }
+  .app-root input[type='search']::-webkit-search-cancel-button { display: none; }
+}

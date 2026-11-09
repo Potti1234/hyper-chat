@@ -1,0 +1,18 @@
+# Working on hyper-chat
+
+A Slack-style team chat built like hypertasks (the Linear clone): a hyper-effect app. Before changing it, load the `hyper-effect` skill (`.claude/skills/hyper-effect`) and read `docs/slack-features.md`, the feature inventory and plan.
+
+- Pages are Foldkit programs whose update loop runs on the server. Keep update and view pure; side effects are Commands.
+- Only Messages listed in a page's `ClientMessage` may be bound in its view; typed text goes through `onInput`/`onChange` handlers. Re-check permissions in update and again in the workspace operation.
+- Wrap independently changing parts of a page in `region(h, { id, deps, render })` and list every Model field the region reads in `deps`. Every page has `keyBindings(h, …)`.
+- Commands run on the server: no `window`, `document` or `localStorage`.
+- Datastar reads `data-*` attributes such as `data-text`, `data-show`, `data-on`, `data-bind`, `data-class`, `data-attr` and `data-signals`. Don't use those names for your own markers.
+- Shared data changes only through an operation in `src/app/workspace.ts` (pure: data in, result and data out), run by the `Workspace` service (`src/app/store.ts`). Keep untouched objects as the same references: Postgres (`postgres.ts`) writes the rows that changed by reference. Rows are JSONB documents decoded with their Schema; a field added to a Schema needs its default in `DEFAULTS` there.
+- Popovers, pickers and menus are placed only with `anchoredStyle` (`src/lib/anchored.ts`); `test/overlays.test.ts` fails on anchor positions written by hand.
+- Form controls are creaseui components (`input`, `textarea`, `checkbox`, …). No native date, time, number, checkbox, file or select controls and no bare `h.input`/`h.textarea` outside src/ui and src/lib (`test/native-controls.test.ts`).
+- Views are built only from creaseui components (`src/ui`, listed in `crease.lock.json`) under the `@creaseui/lint` strict preset. Raw elements and app classes are allowed only in the registered adapters: `src/app/view/design.ts` and `icons.ts`. A look a component lacks becomes a named variant or size on its copy in `src/ui`, not a class override. `src/styles.css` holds only theme tokens; component CSS lives in `src/app/view/design.css`.
+- Themes: `Member.isDark` and `Member.theme` (a creaseui preset slug from `src/app/view/themes.ts`, '' for the app's own, Slack's aubergine). Every page passes both to `pageRoot`.
+- Emoji in source (reactions, demo text) need `crease/no-native-glyphs` disabled with a reason: they are content, not icons.
+- Content the demo script enters is marked `isDemo`, so `demo:clear` can remove it.
+- Done means: `npm run typecheck`, `npm test`, `npm run lint`, `npm run test:pg` and `npm run check:fresh` pass (Postgres from `npm run db:up`).
+- hyper-effect is the published `@hyper-effect/core` package; don't patch `node_modules`.

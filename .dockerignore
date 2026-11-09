@@ -1,0 +1,8 @@
+node_modules
+public/styles.css
+screenshots
+output
+.hyper-sessions*
+.env
+.git
+*.log

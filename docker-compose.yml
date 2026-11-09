@@ -1,0 +1,56 @@
+# hyper-chat: the app and its Postgres.
+#
+#   npm run setup                         # once: .env with random secrets
+#   docker compose up -d --build --wait   # http://localhost:4300
+#   docker compose exec app npm run demo:seed
+#
+# Local development runs only the database (`npm run db:up`) and the app with
+# `npm start`, which connects to localhost:5435.
+#
+# The app refuses to start in production without APP_SECRET and
+# HYPER_SNAPSHOT_SECRET (.env, see .env.example). Postgres is reachable only
+# from this machine (127.0.0.1) and from the app container.
+
+name: hyperchat
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: hyperchat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hyperchat-dev}
+      POSTGRES_DB: hyperchat
+    volumes:
+      - hyperchat_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT:-5435}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hyperchat -d hyperchat"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgres://hyperchat:${POSTGRES_PASSWORD:-hyperchat-dev}@db:5432/hyperchat
+      APP_SECRET: ${APP_SECRET:?run npm run setup (or set APP_SECRET in .env)}
+      HYPER_SNAPSHOT_SECRET: ${HYPER_SNAPSHOT_SECRET:?run npm run setup (or set HYPER_SNAPSHOT_SECRET in .env)}
+      NODE_ENV: production
+      PORT: "4300"
+    ports:
+      - "${APP_PORT:-4300}:4300"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:4300/login || exit 1"]
+      interval: 3s
+      timeout: 3s
+      start_period: 10s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  hyperchat_data:
