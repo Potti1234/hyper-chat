@@ -133,9 +133,16 @@ export const Message = S.Struct({
   createdAt: S.Number,
   editedAt: S.NullOr(S.Number),
   reactions: S.Array(Reaction),
+  /** The message this replies to in a thread; null in the channel itself. */
+  threadId: S.NullOr(S.String),
+  /** A reply also sent to the channel ("Also send to #channel"). */
+  alsoInChannel: S.Boolean,
   isDemo: S.Boolean,
 })
 export type Message = typeof Message.Type
+
+/** Shown in the channel: messages, and replies also sent there. */
+export const inChannel = (message: Message): boolean => message.threadId === null || message.alsoInChannel
 
 export const MAX_MESSAGE = 4000
 

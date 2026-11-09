@@ -57,6 +57,23 @@ describe('workspace', () => {
     }).pipe(Effect.provide(workspaceLayer())),
   )
 
+  it.effect('replies in threads, optionally also in the channel, and deletes a thread with its message', () =>
+    Effect.gen(function* () {
+      const workspace = yield* Workspace
+      const parent = yield* workspace.postMessage('ch_general', 'Thoughts?', 'mem_avery')
+      const reply = yield* workspace.postMessage('ch_general', 'Love it', 'mem_blake', { threadId: parent.id })
+      const loud = yield* workspace.postMessage('ch_general', 'Agreed', 'mem_casey', { threadId: parent.id, alsoInChannel: true })
+      assert.strictEqual(reply.threadId, parent.id)
+      assert.isFalse(reply.alsoInChannel)
+      assert.isTrue(loud.alsoInChannel)
+      assert.strictEqual((yield* Effect.flip(workspace.postMessage('ch_general', 'Nested', 'mem_avery', { threadId: reply.id }))).reason, 'Reply to the thread itself.')
+      assert.strictEqual((yield* Effect.flip(workspace.postMessage('ch_random', 'Elsewhere', 'mem_avery', { threadId: parent.id }))).reason, 'That thread was deleted.')
+      yield* workspace.deleteMessage(parent.id, 'mem_avery')
+      const ids = (yield* workspace.current).messages.map(message => message.id)
+      assert.isFalse([parent.id, reply.id, loud.id].some(id => ids.includes(id)))
+    }).pipe(Effect.provide(workspaceLayer())),
+  )
+
   it.effect('clears the demo content', () =>
     Effect.gen(function* () {
       const workspace = yield* Workspace

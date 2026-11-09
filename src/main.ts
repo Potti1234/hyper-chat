@@ -37,7 +37,7 @@ export const page: Hyper.Options = {
 
 const Routes = Layer.mergeAll(
   // "/" opens your home conversation (#general).
-  Hyper.layer(ClientPage.program, { ...page, path: '/client/:channel', paths: ['/'], prefetch: ['/client/*'] }),
+  Hyper.layer(ClientPage.program, { ...page, path: '/client/:channel', paths: ['/', '/client/:channel/thread/:thread'], prefetch: ['/client/*'] }),
   Auth.routes,
   HttpRouter.add('GET', '/favicon.ico', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),
   HttpRouter.add('GET', '/favicon.svg', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),

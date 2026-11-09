@@ -5,7 +5,7 @@ import * as Icon from '@/lib/icon'
 import { badge } from '@/ui/badge'
 import { button, buttonLink } from '@/ui/button'
 
-import { type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, isMemberOf, mentions, readAt } from '../domain'
+import { type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, mentions, readAt } from '../domain'
 import type { WorkspaceState } from '../store'
 import { box, slack } from './design'
 import { avatar, workspaceIcon } from './icons'
@@ -32,7 +32,7 @@ export type Nav = typeof Nav.Type
 
 const navRow = (state: WorkspaceState, channel: Channel, me: Member): NavRow => {
   const seen = readAt(state.reads, me.id, channel.id)
-  const unread = state.messages.filter(message => message.channelId === channel.id && message.authorId !== me.id && message.createdAt > seen)
+  const unread = state.messages.filter(message => message.channelId === channel.id && inChannel(message) && message.authorId !== me.id && message.createdAt > seen)
   return {
     id: channel.id,
     label: conversationName(channel, state.members, me.id),

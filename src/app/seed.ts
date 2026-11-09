@@ -54,6 +54,29 @@ const CHANNELS: ReadonlyArray<readonly [id: string, name: string, kind: ChannelK
   ['dm_avery_devon_emery', '', 'dm', '', '', ids('avery', 'devon', 'emery')],
 ]
 
+/** Reactions on SCRIPT messages, by their 1-based position. */
+const REACTIONS: Readonly<Record<number, ReadonlyArray<readonly [string, ReadonlyArray<string>]>>> = {
+  4: [['🎉', ['avery', 'blake', 'casey', 'harper']], ['🙌', ['devon']]],
+  6: [['📈', ['avery', 'blake']]],
+  8: [['👀', ['devon', 'emery', 'frankie']]],
+  15: [['🎲', ['casey', 'devon']]],
+  17: [['🚀', ['blake', 'casey', 'devon', 'emery', 'frankie']]],
+  32: [['✅', ['devon']]],
+}
+
+/** Thread replies: [SCRIPT position of the parent, author, minutes ago, text, also sent to the channel]. */
+const REPLIES: ReadonlyArray<readonly [number, string, number, string, boolean?]> = [
+  [8, 'emery', 92, 'Does the freeze include docs changes?'],
+  [8, 'blake', 90, 'Docs are fine, code only.'],
+  [8, 'frankie', 85, 'Good to know, the changelog PR can still go in then.'],
+  [20, 'emery', 1440 + 370, 'Thanks! I will rerun the blocked cases once it is there.'],
+  [20, 'blake', 600, 'It is on staging now.', true],
+  [21, 'avery', 280, 'These look great. Can we keep the illustration on the last step?'],
+  [21, 'casey', 270, 'Yes, I will keep it and tighten the copy.'],
+  [33, 'devon', 1440 + 220, 'Could it be the same bug as the duplicate emails last month?'],
+  [33, 'emery', 1440 + 215, 'Same root cause, yes.'],
+]
+
 /** [channel, author, minutes ago, text] */
 const SCRIPT: ReadonlyArray<readonly [string, string, number, string]> = [
   ['ch_general', 'avery', 4 * 1440 + 600, 'Good morning everyone! Reminder that the all-hands is moved to Thursday this week.'],
@@ -118,16 +141,31 @@ export const demoData = (now: number): WorkspaceData => {
     isArchived: false,
     isDemo: true,
   }))
-  const messages: ReadonlyArray<Message> = SCRIPT.map(([channelId, author, minutesAgo, text], index) => ({
+  const roots: ReadonlyArray<Message> = SCRIPT.map(([channelId, author, minutesAgo, text], index) => ({
     id: `msg_demo_${index + 1}`,
     channelId,
     authorId: `mem_${author}`,
     text,
     createdAt: now - minutesAgo * minute,
     editedAt: null,
-    reactions: [],
+    reactions: (REACTIONS[index + 1] ?? []).map(([emoji, people]) => ({ emoji, memberIds: people.map(key => `mem_${key}`) })),
+    threadId: null,
+    alsoInChannel: false,
     isDemo: true,
-  })).sort((a, b) => a.createdAt - b.createdAt)
+  }))
+  const replies: ReadonlyArray<Message> = REPLIES.map(([parent, author, minutesAgo, text, alsoInChannel], index) => ({
+    id: `msg_demo_reply_${index + 1}`,
+    channelId: SCRIPT[parent - 1]?.[0] ?? 'ch_general',
+    authorId: `mem_${author}`,
+    text,
+    createdAt: now - minutesAgo * minute,
+    editedAt: null,
+    reactions: [],
+    threadId: `msg_demo_${parent}`,
+    alsoInChannel: alsoInChannel === true,
+    isDemo: true,
+  }))
+  const messages = [...roots, ...replies].sort((a, b) => a.createdAt - b.createdAt)
   // Everyone has read up to two hours ago, so the newest messages are unread.
   const reads: ReadonlyArray<Read> = channels.flatMap(channel =>
     channel.memberIds.map(memberId => ({ memberId, channelId: channel.id, at: now - 120 * minute })),

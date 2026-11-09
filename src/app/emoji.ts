@@ -60,10 +60,12 @@ export const EMOJI: ReadonlyArray<Emoji> = [
     ['🎉', 'tada', 'party congrats'],
     ['🎊', 'confetti_ball'],
     ['🏆', 'trophy', 'win'],
+    ['🎲', 'game_die', 'dice board game'],
     ['🎯', 'dart', 'target bullseye'],
     ['🎨', 'art', 'design'],
   ]),
   ...list('Objects', [
+    ['📈', 'chart_with_upwards_trend', 'growth metrics up'],
     ['🚀', 'rocket', 'ship launch'],
     ['💡', 'bulb', 'idea'],
     ['📌', 'pushpin', 'pin'],

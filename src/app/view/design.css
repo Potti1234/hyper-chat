@@ -47,6 +47,13 @@
   .day-divider > span { position: relative; border: 1px solid var(--border); border-radius: 9999px; background: var(--background); padding: 2px 16px; font-size: 13px; font-weight: 700; }
   .new-divider { display: flex; align-items: center; gap: 8px; margin: 4px 20px; color: var(--destructive); font-size: 12px; font-weight: 700; }
   .new-divider::before { content: ''; flex: 1; border-top: 1px solid var(--destructive); }
+
+  /* The thread pane beside the conversation (Slack's secondary column). */
+  .slack-main[data-split] { border-radius: 0; }
+  .slack-thread { display: flex; width: 420px; flex-shrink: 0; flex-direction: column; margin-top: 4px; overflow: hidden; border-left: 1px solid var(--border); border-radius: 0 8px 8px 0; background: var(--background); }
+  .slack-thread .composer { margin: 8px 16px 16px; }
+  .reply-divider { display: flex; align-items: center; gap: 8px; margin: 4px 20px; color: var(--muted-foreground); font-size: 13px; }
+  .reply-divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
   .composer[data-inline] { margin: 4px 0; }
   .composer { margin: 0 20px 20px; border: 1px solid var(--input); border-radius: 8px; background: var(--background); }
   .composer:focus-within { border-color: color-mix(in oklab, var(--foreground) 45%, transparent); box-shadow: 0 1px 4px color-mix(in oklab, var(--foreground) 12%, transparent); }

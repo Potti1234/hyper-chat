@@ -98,4 +98,6 @@ export const slack = {
   dayDivider: 'day-divider',
   newDivider: 'new-divider',
   composer: 'composer',
+  thread: 'slack-thread',
+  replyDivider: 'reply-divider',
 } as const

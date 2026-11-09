@@ -49,7 +49,7 @@ const SCHEMAS = {
 const DEFAULTS: Readonly<Record<Collection, Readonly<Record<string, unknown>>>> = {
   members: {},
   channels: {},
-  messages: {},
+  messages: { threadId: null, alsoInChannel: false },
   reads: {},
 }
 

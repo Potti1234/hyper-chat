@@ -37,13 +37,17 @@ export const buttonVariants = cva(
         'sidebar-icon': 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-expanded:bg-sidebar-accent',
         rail: 'text-sidebar-foreground hover:text-sidebar-accent-foreground [&_[data-slot=rail-icon]]:hover:bg-sidebar-accent',
         'rail-active': 'text-sidebar-accent-foreground [&_[data-slot=rail-icon]]:bg-sidebar-accent',
-        // The composer's send button: grey until there is something to send.
         // Reactions under a message: a pill, blue when you are one of them.
         reaction: 'h-6 gap-1 rounded-full border-border bg-muted/60 px-1.5 text-[12px] font-semibold text-muted-foreground hover:border-muted-foreground/40 hover:bg-background',
         'reaction-mine': 'h-6 gap-1 rounded-full border-link/60 bg-link/10 px-1.5 text-[12px] font-semibold text-link hover:bg-link/15',
         // A cell of the emoji picker and the hover toolbar's buttons.
         emoji: 'text-[20px] hover:bg-muted',
         toolbar: 'text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted',
+        // A thread's replies under its message: avatars, "3 replies", last reply.
+        'thread-summary': 'h-8 w-full max-w-[560px] justify-start gap-2 rounded-md border-transparent px-1 text-[13px] font-normal text-muted-foreground hover:border-border hover:bg-background',
+        // "replied to a thread: …" above a reply also sent to the channel.
+        'replied-to': 'h-5 max-w-full min-w-0 justify-start overflow-hidden px-0 text-[12px] font-normal text-link hover:underline',
+        // The composer's send button: grey until there is something to send.
         send: 'bg-primary text-primary-foreground hover:bg-primary/90 data-[disabled]:bg-transparent data-[disabled]:text-muted-foreground data-[disabled]:opacity-100 aria-disabled:bg-transparent aria-disabled:text-muted-foreground aria-disabled:opacity-100',
       },
       size: {

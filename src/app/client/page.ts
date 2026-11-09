@@ -8,12 +8,13 @@ import { PageNotFound, PageRedirect, type PageRequest, type Program, keyBindings
 import * as Icon from '@/lib/icon'
 import { anchoredStyle } from '@/lib/anchored'
 import { button } from '@/ui/button'
+import { checkbox } from '@/ui/checkbox'
 import * as Dialog from '@/ui/dialog'
 import { input } from '@/ui/input'
 import { textarea } from '@/ui/textarea'
 
 import { requireMember } from '../auth'
-import { Channel, MAX_MESSAGE, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, dmPartners, formatTime, isMemberOf, readAt } from '../domain'
+import { Channel, MAX_MESSAGE, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, dmPartners, formatTime, inChannel, isMemberOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState } from '../store'
 import { box, optionRow, pageRoot, slack } from '../view/design'
@@ -30,10 +31,18 @@ import { Nav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '.
 
    Each message has Slack's hover toolbar: quick reactions, the emoji
    picker, and (for your own) a menu to edit or delete. Up in an empty
-   composer edits your last message; Escape closes what is open. */
+   composer edits your last message; Escape closes what is open.
+
+   Threads open in a pane beside the conversation: the message, its
+   replies and a composer that can also send the reply to the channel.
+   A message with replies shows who replied and when, Slack's reply bar. */
 
 /** Messages kept on the page (the newest). */
 export const SHOWN = 300
+
+/** Where a message is shown: in the conversation or the thread pane. */
+export const Where = S.Literals(['channel', 'thread'])
+export type Where = typeof Where.Type
 
 // MODEL
 
@@ -56,9 +65,11 @@ export const Model = S.Struct({
   notice: S.NullOr(S.String),
   collapsed: S.Array(S.String),
   /** Your message being edited in place. */
-  editing: S.NullOr(S.Struct({ id: S.String, text: S.String, isSaving: S.Boolean })),
+  editing: S.NullOr(S.Struct({ id: S.String, where: Where, text: S.String, isSaving: S.Boolean })),
   /** The emoji picker or a message's menu, anchored to its button. */
-  overlay: S.NullOr(S.Struct({ kind: S.Literals(['emoji', 'actions']), messageId: S.String, anchor: S.String })),
+  overlay: S.NullOr(S.Struct({ kind: S.Literals(['emoji', 'actions']), messageId: S.String, where: Where, anchor: S.String })),
+  /** The open thread pane and its composer. */
+  thread: S.NullOr(S.Struct({ id: S.String, draft: S.String, alsoSend: S.Boolean, isSending: S.Boolean })),
   emojiQuery: S.String,
   /** The message the delete confirmation is for. */
   deleting: S.NullOr(S.String),
@@ -86,12 +97,18 @@ export const Message = defineMessageUnion({
   ClickedToggleSection: { section: S.String },
   ClickedDismissNotice: {},
   ClickedReaction: { messageId: S.String, emoji: S.String },
-  ClickedAddReaction: { messageId: S.String, from: S.Literals(['toolbar', 'reactions']) },
+  ClickedAddReaction: { messageId: S.String, from: S.Literals(['toolbar', 'reactions']), where: Where },
   ChangedEmojiQuery: { text: S.String },
   ClickedEmoji: { emoji: S.String },
-  ClickedMore: { messageId: S.String },
+  ClickedMore: { messageId: S.String, where: Where },
   ClickedCloseOverlay: {},
-  ClickedEdit: { messageId: S.String },
+  ClickedEdit: { messageId: S.String, where: Where },
+  ClickedReplyInThread: { messageId: S.String },
+  ClickedCloseThread: {},
+  ChangedThreadDraft: { text: S.String },
+  SubmittedThreadDraft: {},
+  ToggledAlsoSend: { isChecked: S.Boolean },
+  SucceededReply: {},
   ChangedEdit: { text: S.String },
   SubmittedEdit: {},
   ClickedCancelEdit: {},
@@ -128,6 +145,10 @@ export const ClientMessage = S.Union([
   Message.ClickedCancelEdit,
   Message.ClickedDelete,
   Message.ClickedConfirmDelete,
+  Message.ClickedReplyInThread,
+  Message.ClickedCloseThread,
+  Message.SubmittedThreadDraft,
+  Message.ToggledAlsoSend,
   // The dialog's own bindings; its Command results never come from the page.
   S.TaggedStruct('GotConfirmDialog', { message: Dialog.Message.RequestedClose }),
 ])
@@ -141,6 +162,16 @@ export const SendMessage = Command.define('SendMessage', {
   execute: ({ channelId, text, actorId }) =>
     Workspace.use(workspace => workspace.postMessage(channelId, text, actorId)).pipe(
       Effect.as(Message.SucceededSend()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const SendReply = Command.define('SendReply', {
+  args: { channelId: S.String, threadId: S.String, text: S.String, alsoInChannel: S.Boolean, actorId: S.String },
+  messages: [Message.SucceededReply, Message.FailedChange],
+  execute: ({ channelId, threadId, text, alsoInChannel, actorId }) =>
+    Workspace.use(workspace => workspace.postMessage(channelId, text, actorId, { threadId, alsoInChannel })).pipe(
+      Effect.as(Message.SucceededReply()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
 })
@@ -194,6 +225,16 @@ export const FocusElement = Command.define('FocusElement', {
   execute: () => Effect.succeed(Message.CompletedBrowserAction()),
 })
 
+/** Replaces the address without a load (a forwarded client command). */
+export const ReplaceUrl = Command.define('ReplaceUrl', {
+  args: { url: S.String },
+  messages: [Message.CompletedBrowserAction],
+  execute: () => Effect.succeed(Message.CompletedBrowserAction()),
+})
+
+/** The address of a conversation, with its open thread. */
+export const urlOf = (channelId: string, threadId: string | null) => `/client/${channelId}${threadId === null ? '' : `/thread/${threadId}`}`
+
 // INIT
 
 export type Flags = Readonly<{
@@ -206,11 +247,13 @@ export type Flags = Readonly<{
   nav: Nav
   now: number
   readMarker: number
+  threadId: string | null
 }>
 
-export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({
+export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Message, Workspace> => ({
   model: {
     ...flags,
+    thread: threadId === null ? null : { id: threadId, draft: '', alsoSend: false, isSending: false },
     markedUpTo: flags.readMarker,
     draft: '',
     isConnected: false,
@@ -249,17 +292,46 @@ const send = (model: Model): UpdateReturn => {
   return { model: { ...model, isSending: true }, commands: [SendMessage({ channelId: model.channelId, text, actorId: model.me.id })] }
 }
 
+/** A message with its thread: replies are kept to the thread they belong to. */
+const threadRoot = (model: Model, messageId: string) => {
+  const message = model.messages.find(candidate => candidate.id === messageId)
+  const rootId = message?.threadId ?? message?.id
+  return model.messages.find(candidate => candidate.id === rootId && candidate.threadId === null)
+}
+
+export const repliesOf = (messages: ReadonlyArray<ChatMessage>, threadId: string) => messages.filter(message => message.threadId === threadId)
+
+const openThread = (model: Model, messageId: string): UpdateReturn => {
+  const root = threadRoot(model, messageId)
+  if (root === undefined) return { model }
+  const thread = model.thread?.id === root.id ? model.thread : { id: root.id, draft: '', alsoSend: false, isSending: false }
+  return { model: withFocus({ ...model, overlay: null, thread }, '#thread-composer') }
+}
+
+const sendReply = (model: Model): UpdateReturn => {
+  const thread = model.thread
+  if (thread === null || thread.isSending) return { model }
+  const text = thread.draft.trim()
+  if (text === '') return { model }
+  if (!canWrite(model)) return { model: { ...model, notice: 'Join this channel to reply.' } }
+  if (text.length > MAX_MESSAGE) return { model: { ...model, notice: `Keep messages under ${MAX_MESSAGE} characters.` } }
+  if (threadRoot(model, thread.id) === undefined) return { model: { ...model, thread: null, notice: 'That thread was deleted.' } }
+  return { model: { ...model, thread: { ...thread, isSending: true } }, commands: [SendReply({ channelId: model.channelId, threadId: thread.id, text, alsoInChannel: thread.alsoSend, actorId: model.me.id })] }
+}
+
+const composerOf = (where: Where) => (where === 'thread' ? '#thread-composer' : '#composer')
+
 const ownMessage = (model: Model, messageId: string) => model.messages.find(message => message.id === messageId && message.authorId === model.me.id)
 
 /** The CSS anchor of a message's toolbar or reaction-bar button. */
-export const anchorOf = (messageId: string, from: 'toolbar' | 'reactions' | 'more') => `--${from}-${messageId.replace(/[^a-zA-Z0-9-]/g, '-')}`
+export const anchorOf = (messageId: string, from: 'toolbar' | 'reactions' | 'more', where: Where) => `--${where}-${from}-${messageId.replace(/[^a-zA-Z0-9-]/g, '-')}`
 
 const withFocus = (model: Model, selector: string): Model => ({ ...model, seq: model.seq + 1, focus: { selector, seq: model.seq + 1 } })
 
-const startEdit = (model: Model, messageId: string): UpdateReturn => {
+const startEdit = (model: Model, messageId: string, where: Where): UpdateReturn => {
   const message = ownMessage(model, messageId)
-  if (message === undefined) return { model: { ...model, overlay: null } }
-  return { model: withFocus({ ...model, overlay: null, editing: { id: message.id, text: message.text, isSaving: false } }, '#edit-composer') }
+  if (message === undefined || (where === 'thread' && model.thread === null)) return { model: { ...model, overlay: null } }
+  return { model: withFocus({ ...model, overlay: null, editing: { id: message.id, where, text: message.text, isSaving: false } }, '#edit-composer') }
 }
 
 const saveEdit = (model: Model): UpdateReturn => {
@@ -270,7 +342,7 @@ const saveEdit = (model: Model): UpdateReturn => {
   const text = editing.text.trim()
   // Slack: saving an empty message offers to delete it.
   if (text === '') return askDelete({ ...model, editing: null }, message.id)
-  if (text === message.text) return { model: withFocus({ ...model, editing: null }, '#composer') }
+  if (text === message.text) return { model: withFocus({ ...model, editing: null }, composerOf(editing.where)) }
   if (text.length > MAX_MESSAGE) return { model: { ...model, notice: `Keep messages under ${MAX_MESSAGE} characters.` } }
   return { model: { ...model, editing: { ...editing, isSaving: true } }, commands: [EditMessage({ messageId: message.id, text, actorId: model.me.id })] }
 }
@@ -296,12 +368,13 @@ const withoutGone = (model: Model): Model => {
     ...model,
     editing: model.editing !== null && !has(model.editing.id) ? null : model.editing,
     overlay: model.overlay !== null && !has(model.overlay.messageId) ? null : model.overlay,
+    thread: model.thread !== null && !has(model.thread.id) ? null : model.thread,
   }
 }
 
 const escape = (model: Model): UpdateReturn => {
   if (model.overlay !== null) return { model: { ...model, overlay: null } }
-  if (model.editing !== null) return { model: withFocus({ ...model, editing: null }, '#composer') }
+  if (model.editing !== null) return { model: withFocus({ ...model, editing: null }, composerOf(model.editing.where)) }
   return { model }
 }
 
@@ -311,30 +384,50 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
     M.tagsExhaustive({
       ChangedDraft: ({ text }) => ({ model: { ...model, draft: text.slice(0, MAX_MESSAGE + 100) } }),
       SubmittedDraft: () => send(model),
-      PressedEnter: ({ targetId }) => (targetId === 'composer' ? send(model) : targetId === 'edit-composer' ? saveEdit(model) : { model }),
+      PressedEnter: ({ targetId }) =>
+        targetId === 'composer' ? send(model) : targetId === 'thread-composer' ? sendReply(model) : targetId === 'edit-composer' ? saveEdit(model) : { model },
       PressedEscape: () => escape(model),
       // Up in an empty composer edits your last message (Slack).
       PressedUp: ({ targetId }) => {
-        if (targetId !== 'composer' || model.draft !== '' || model.editing !== null) return { model }
-        const last = [...model.messages].reverse().find(message => message.authorId === model.me.id)
-        return last === undefined ? { model } : startEdit(model, last.id)
+        if (model.editing !== null) return { model }
+        if (targetId === 'composer' && model.draft === '') {
+          const last = [...model.messages].reverse().find(message => message.authorId === model.me.id && inChannel(message))
+          return last === undefined ? { model } : startEdit(model, last.id, 'channel')
+        }
+        if (targetId === 'thread-composer' && model.thread !== null && model.thread.draft === '') {
+          const threadId = model.thread.id
+          const last = [...model.messages].reverse().find(message => message.authorId === model.me.id && (message.threadId === threadId || message.id === threadId))
+          return last === undefined ? { model } : startEdit(model, last.id, 'thread')
+        }
+        return { model }
       },
       ClickedReaction: ({ messageId, emoji }) => react(model, messageId, emoji),
-      ClickedAddReaction: ({ messageId, from }) =>
+      ClickedAddReaction: ({ messageId, from, where }) =>
         model.messages.some(message => message.id === messageId)
-          ? { model: withFocus({ ...model, emojiQuery: '', overlay: { kind: 'emoji', messageId, anchor: anchorOf(messageId, from) } }, '#emoji-search') }
+          ? { model: withFocus({ ...model, emojiQuery: '', overlay: { kind: 'emoji', messageId, where, anchor: anchorOf(messageId, from, where) } }, '#emoji-search') }
           : { model },
       ChangedEmojiQuery: ({ text }) => ({ model: { ...model, emojiQuery: text.slice(0, 40) } }),
       ClickedEmoji: ({ emoji }) => (model.overlay?.kind === 'emoji' ? react(model, model.overlay.messageId, emoji) : { model }),
-      ClickedMore: ({ messageId }) =>
+      ClickedMore: ({ messageId, where }) =>
         ownMessage(model, messageId) === undefined
           ? { model }
-          : { model: { ...model, overlay: model.overlay?.kind === 'actions' && model.overlay.messageId === messageId ? null : { kind: 'actions', messageId, anchor: anchorOf(messageId, 'more') } } },
+          : {
+              model: {
+                ...model,
+                overlay: model.overlay?.kind === 'actions' && model.overlay.messageId === messageId && model.overlay.where === where ? null : { kind: 'actions', messageId, where, anchor: anchorOf(messageId, 'more', where) },
+              },
+            },
       ClickedCloseOverlay: () => ({ model: { ...model, overlay: null } }),
-      ClickedEdit: ({ messageId }) => startEdit(model, messageId),
+      ClickedEdit: ({ messageId, where }) => startEdit(model, messageId, where),
+      ClickedReplyInThread: ({ messageId }) => openThread(model, messageId),
+      ClickedCloseThread: () => ({ model: withFocus({ ...model, thread: null, editing: model.editing?.where === 'thread' ? null : model.editing, overlay: model.overlay?.where === 'thread' ? null : model.overlay }, '#composer') }),
+      ChangedThreadDraft: ({ text }) => (model.thread === null ? { model } : { model: { ...model, thread: { ...model.thread, draft: text.slice(0, MAX_MESSAGE + 100) } } }),
+      SubmittedThreadDraft: () => sendReply(model),
+      ToggledAlsoSend: ({ isChecked }) => (model.thread === null ? { model } : { model: { ...model, thread: { ...model.thread, alsoSend: isChecked } } }),
+      SucceededReply: () => ({ model: withFocus({ ...model, thread: model.thread === null ? null : { ...model.thread, draft: '', alsoSend: false, isSending: false } }, '#thread-composer') }),
       ChangedEdit: ({ text }) => (model.editing === null ? { model } : { model: { ...model, editing: { ...model.editing, text: text.slice(0, MAX_MESSAGE + 100) } } }),
       SubmittedEdit: () => saveEdit(model),
-      ClickedCancelEdit: () => ({ model: withFocus({ ...model, editing: null }, '#composer') }),
+      ClickedCancelEdit: () => ({ model: withFocus({ ...model, editing: null }, composerOf(model.editing?.where ?? 'channel')) }),
       ClickedDelete: ({ messageId }) => askDelete(model, messageId),
       ClickedConfirmDelete: () => {
         const messageId = model.deleting
@@ -343,7 +436,7 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
         return { ...closed, commands: [...(closed.commands ?? []), DeleteMessage({ messageId, actorId: model.me.id })] }
       },
       GotConfirmDialog: ({ message }) => withConfirm(model, Dialog.update(model.confirm, message)),
-      SucceededEdit: () => ({ model: withFocus({ ...model, editing: null }, '#composer') }),
+      SucceededEdit: () => ({ model: withFocus({ ...model, editing: null }, composerOf(model.editing?.where ?? 'channel')) }),
       SucceededDelete: () => ({ model: withFocus(model, '#composer') }),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ClickedToggleSection: ({ section }) => ({
@@ -354,17 +447,25 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       GotChannel: slice => markRead({ model: withoutGone({ ...model, ...slice }) }),
       // Sent: the composer empties and the "New" line goes (you are up to date).
       SucceededSend: () => ({ model: { ...model, draft: '', isSending: false, readMarker: Number.MAX_SAFE_INTEGER, seq: model.seq + 1, focus: { selector: '#composer', seq: model.seq + 1 } } }),
-      FailedChange: ({ reason }) => ({ model: { ...model, isSending: false, editing: model.editing === null ? null : { ...model.editing, isSaving: false }, notice: reason } }),
+      FailedChange: ({ reason }) => ({
+        model: { ...model, isSending: false, editing: model.editing === null ? null : { ...model.editing, isSaving: false }, thread: model.thread === null ? null : { ...model.thread, isSending: false }, notice: reason },
+      }),
       CompletedChange: () => ({ model }),
       CompletedBrowserAction: () => ({ model }),
     }),
   )
 
-/** Every new focus request becomes a forwarded focus. */
+/** Every new focus request becomes a forwarded focus, and opening or closing a thread updates the address. */
 export const update = (model: Model, message: Message): UpdateReturn => {
   const result = updateModel(model, message)
   const focus = result.model.focus
-  return focus !== null && focus.seq !== model.focus?.seq ? { ...result, commands: [...(result.commands ?? []), FocusElement({ selector: focus.selector })] } : result
+  const threadId = result.model.thread?.id ?? null
+  const commands = [
+    ...(result.commands ?? []),
+    ...(focus !== null && focus.seq !== model.focus?.seq ? [FocusElement({ selector: focus.selector })] : []),
+    ...(threadId !== (model.thread?.id ?? null) ? [ReplaceUrl({ url: urlOf(model.channelId, threadId) })] : []),
+  ]
+  return commands.length === (result.commands ?? []).length ? result : { ...result, commands }
 }
 
 // SUBSCRIPTION
@@ -376,11 +477,14 @@ export const sliceOf = (state: WorkspaceState, channelId: string, memberId: stri
   const found = state.channels.find(channel => channel.id === channelId)
   const channel = found !== undefined && canRead(found, memberId) ? found : null
   const all = channel === null ? [] : state.messages.filter(message => message.channelId === channelId)
+  const listed = all.filter(inChannel)
+  // The newest messages, and the threads of those that started one.
+  const shown = new Set(listed.slice(-SHOWN).map(message => message.id))
   return {
     channel,
     members: state.members,
-    messages: all.slice(-SHOWN),
-    older: Math.max(0, all.length - SHOWN),
+    messages: all.filter(message => shown.has(message.id) || (message.threadId !== null && shown.has(message.threadId))),
+    older: Math.max(0, listed.length - SHOWN),
     nav: me === null ? { channels: [], dms: [] } : navOf(state, me),
     me,
   }
@@ -434,7 +538,7 @@ export const rowsOf = (messages: ReadonlyArray<ChatMessage>, readMarker: number,
       rows.push({ _tag: 'new' })
       markedNew = true
     }
-    const isFirst = dayChanged || isNew || previous?.authorId !== message.authorId || message.createdAt - (previous?.createdAt ?? 0) > 5 * 60_000
+    const isFirst = dayChanged || isNew || previous?.authorId !== message.authorId || previous.threadId !== message.threadId || message.createdAt - (previous?.createdAt ?? 0) > 5 * 60_000
     rows.push({ _tag: 'message', message, isFirst })
     previous = message
   }
@@ -446,7 +550,7 @@ const reactedBy = (model: Model, memberIds: ReadonlyArray<string>) => {
   return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`
 }
 
-const reactionsView = (model: Model, message: ChatMessage, h: HtmlBuilder<Message>): Html =>
+const reactionsView = (model: Model, message: ChatMessage, where: Where, h: HtmlBuilder<Message>): Html =>
   box({ class: 'mt-1 flex flex-wrap items-center gap-1', attributes: [h.AriaLabel('Reactions')], children: [
       ...message.reactions.map(reaction => {
         const isMine = reaction.memberIds.includes(model.me.id)
@@ -466,29 +570,32 @@ const reactionsView = (model: Model, message: ChatMessage, h: HtmlBuilder<Messag
         size: 'xs',
         ariaLabel: 'Add reaction',
         title: 'Add reaction',
-        onClick: Message.ClickedAddReaction({ messageId: message.id, from: 'reactions' }),
-        anchorName: anchorOf(message.id, 'reactions'),
+        onClick: Message.ClickedAddReaction({ messageId: message.id, from: 'reactions', where }),
+        anchorName: anchorOf(message.id, 'reactions', where),
         popup: 'dialog',
         children: [Icon.icon('smile-plus', { class: 'size-3.5' }, h)],
       }, h),
     ] }, h)
 
-const toolbarView = (model: Model, message: ChatMessage, h: HtmlBuilder<Message>): Html => {
+const toolbarView = (model: Model, message: ChatMessage, where: Where, h: HtmlBuilder<Message>): Html => {
   const isMine = message.authorId === model.me.id
-  const isMenuOpen = model.overlay?.kind === 'actions' && model.overlay.messageId === message.id
+  const isMenuOpen = model.overlay?.kind === 'actions' && model.overlay.messageId === message.id && model.overlay.where === where
   return box({ class: slack.messageActions, attributes: [h.Role('toolbar'), h.AriaLabel('Message actions')], children: [
       ...(canWrite(model)
         ? [
             ...QUICK_REACTIONS.map(emoji =>
               button({ variant: 'emoji', size: 'icon-sm', ariaLabel: `React with :${emojiName(emoji)}:`, title: `:${emojiName(emoji)}:`, onClick: Message.ClickedReaction({ messageId: message.id, emoji }), children: [box({ as: 'span', class: 'text-[16px] leading-none', children: [emoji] }, h)] }, h),
             ),
-            button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Find another reaction', title: 'Find another reaction', onClick: Message.ClickedAddReaction({ messageId: message.id, from: 'toolbar' }), anchorName: anchorOf(message.id, 'toolbar'), popup: 'dialog', children: [Icon.icon('smile-plus', {}, h)] }, h),
+            button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Find another reaction', title: 'Find another reaction', onClick: Message.ClickedAddReaction({ messageId: message.id, from: 'toolbar', where }), anchorName: anchorOf(message.id, 'toolbar', where), popup: 'dialog', children: [Icon.icon('smile-plus', {}, h)] }, h),
+            ...(where === 'channel'
+              ? [button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Reply in thread', title: 'Reply in thread', onClick: Message.ClickedReplyInThread({ messageId: message.id }), children: [Icon.icon('message-square-text', {}, h)] }, h)]
+              : []),
           ]
         : []),
       ...(isMine
         ? [
-            button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Edit message', title: 'Edit message', onClick: Message.ClickedEdit({ messageId: message.id }), children: [Icon.icon('pencil', {}, h)] }, h),
-            button({ id: `more-${message.id}`, variant: 'toolbar', size: 'icon-sm', ariaLabel: 'More actions', title: 'More actions', onClick: Message.ClickedMore({ messageId: message.id }), anchorName: anchorOf(message.id, 'more'), popup: 'menu', isExpanded: isMenuOpen, children: [Icon.icon('ellipsis-vertical', {}, h)] }, h),
+            button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Edit message', title: 'Edit message', onClick: Message.ClickedEdit({ messageId: message.id, where }), children: [Icon.icon('pencil', {}, h)] }, h),
+            button({ id: `${where}-more-${message.id}`, variant: 'toolbar', size: 'icon-sm', ariaLabel: 'More actions', title: 'More actions', onClick: Message.ClickedMore({ messageId: message.id, where }), anchorName: anchorOf(message.id, 'more', where), popup: 'menu', isExpanded: isMenuOpen, children: [Icon.icon('ellipsis-vertical', {}, h)] }, h),
           ]
         : []),
     ] }, h)
@@ -503,13 +610,50 @@ const editView = (editing: NonNullable<Model['editing']>, h: HtmlBuilder<Message
         ] }, h),
     ] }, h)
 
-const messageView = (model: Model, message: ChatMessage, isFirst: boolean, h: HtmlBuilder<Message>): Html => {
+/** Who replied in a thread and when last: Slack's reply bar. */
+export type ThreadSummary = Readonly<{ count: number; lastAt: number; replierIds: ReadonlyArray<string> }>
+
+export const summaryOf = (replies: ReadonlyArray<ChatMessage>): ThreadSummary | null => {
+  const last = replies.at(-1)
+  if (last === undefined) return null
+  return { count: replies.length, lastAt: last.createdAt, replierIds: [...new Set(replies.map(reply => reply.authorId))].slice(0, 5) }
+}
+
+const summaryView = (model: Model, message: ChatMessage, summary: ThreadSummary, h: HtmlBuilder<Message>): Html =>
+  button({
+    variant: 'thread-summary',
+    size: 'sm',
+    ariaLabel: `${summary.count} ${summary.count === 1 ? 'reply' : 'replies'}, open thread`,
+    onClick: Message.ClickedReplyInThread({ messageId: message.id }),
+    isPressed: model.thread?.id === message.id,
+    children: [
+      box({ class: 'flex gap-1', children: summary.replierIds.map(id => avatar(model.members.find(member => member.id === id), h, 'sm')) }, h),
+      box({ as: 'span', class: 'font-bold text-link', children: [`${summary.count} ${summary.count === 1 ? 'reply' : 'replies'}`] }, h),
+      box({ as: 'span', children: [`Last reply ${dayLabel(summary.lastAt, model.now).toLowerCase()} at ${formatTime(summary.lastAt)}`] }, h),
+    ],
+  }, h)
+
+/** A reply also sent to the channel says which thread it answers. */
+const repliedToView = (model: Model, message: ChatMessage, h: HtmlBuilder<Message>): Html => {
+  const parent = model.messages.find(candidate => candidate.id === message.threadId)
+  return button({
+    variant: 'replied-to',
+    size: 'xs',
+    onClick: Message.ClickedReplyInThread({ messageId: message.id }),
+    children: [
+      box({ as: 'span', class: 'text-muted-foreground', children: ['replied to a thread: '] }, h),
+      box({ as: 'span', class: 'min-w-0 truncate', children: [parent === undefined ? 'a deleted message' : parent.text] }, h),
+    ],
+  }, h)
+}
+
+const messageView = (model: Model, message: ChatMessage, isFirst: boolean, where: Where, summary: ThreadSummary | null, h: HtmlBuilder<Message>): Html => {
   const author = model.members.find(member => member.id === message.authorId)
-  const editing = model.editing !== null && model.editing.id === message.id ? model.editing : null
-  const isActive = model.overlay !== null && model.overlay.messageId === message.id
+  const editing = model.editing !== null && model.editing.id === message.id && model.editing.where === where ? model.editing : null
+  const isActive = model.overlay !== null && model.overlay.messageId === message.id && model.overlay.where === where
   return box({ as: 'li', class: slack.messageRow, attributes: [
       h.Key(message.id),
-      h.Id(`message-${message.id}`),
+      h.Id(`${where === 'thread' ? 'thread-' : ''}message-${message.id}`),
       h.DataAttribute('author', message.authorId),
       ...(isFirst && editing === null ? [] : [h.DataAttribute('continued', '')]),
       ...(isActive ? [h.DataAttribute('active', '')] : []),
@@ -517,6 +661,7 @@ const messageView = (model: Model, message: ChatMessage, isFirst: boolean, h: Ht
     ], children: [
       box({ class: slack.messageGutter, children: isFirst ? [avatar(author, h, 'md')] : [box({ as: 'span', class: slack.messageHoverTime, children: [formatTime(message.createdAt)] }, h)] }, h),
       box({ class: 'min-w-0 flex-1', children: [
+          ...(where === 'channel' && message.threadId !== null ? [repliedToView(model, message, h)] : []),
           ...(isFirst
             ? [box({ class: 'flex items-baseline gap-2', children: [box({ as: 'strong', class: 'font-bold', children: [author?.name ?? 'Former member'] }, h), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [formatTime(message.createdAt)] }, h)] }, h)]
             : []),
@@ -527,10 +672,11 @@ const messageView = (model: Model, message: ChatMessage, isFirst: boolean, h: Ht
                     ...messageText(message.text, model.members, h),
                     ...(message.editedAt === null ? [] : [box({ as: 'span', class: 'ml-1 text-[12px] text-muted-foreground', attributes: [h.Title(`Edited ${formatTime(message.editedAt)}`)], children: ['(edited)'] }, h)]),
                   ] }, h),
-                ...(message.reactions.length === 0 ? [] : [reactionsView(model, message, h)]),
+                ...(message.reactions.length === 0 ? [] : [reactionsView(model, message, where, h)]),
+                ...(summary === null ? [] : [summaryView(model, message, summary, h)]),
               ]),
         ] }, h),
-      ...(editing === null ? [toolbarView(model, message, h)] : []),
+      ...(editing === null ? [toolbarView(model, message, where, h)] : []),
     ] }, h)
 }
 
@@ -554,9 +700,9 @@ const emojiPicker = (model: Model, anchor: string, h: HtmlBuilder<Message>): Htm
     ] }, h)
 }
 
-const actionsMenu = (model: Model, messageId: string, anchor: string, h: HtmlBuilder<Message>): Html =>
+const actionsMenu = (messageId: string, where: Where, anchor: string, h: HtmlBuilder<Message>): Html =>
   box({ class: 'z-50 flex w-56 flex-col rounded-lg border bg-popover p-1 text-popover-foreground shadow-[0_8px_30px_rgb(0_0_0/0.12)]', style: anchoredStyle(anchor, { side: 'bottom', align: 'end' }), attributes: [h.Id('message-menu'), h.Role('menu'), h.AriaLabel('Message actions')], children: [
-      optionRow({ id: 'menu-edit', value: 'edit', isActive: false, onClick: Message.ClickedEdit({ messageId }), children: [Icon.icon('pencil', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Edit message'] }, h)] }, h),
+      optionRow({ id: 'menu-edit', value: 'edit', isActive: false, onClick: Message.ClickedEdit({ messageId, where }), children: [Icon.icon('pencil', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Edit message'] }, h)] }, h),
       optionRow({ id: 'menu-delete', value: 'delete', isActive: false, onClick: Message.ClickedDelete({ messageId }), children: [Icon.icon('trash-2', { class: 'size-4 text-destructive' }, h), box({ as: 'span', class: 'flex-1 text-destructive', children: ['Delete message…'] }, h)] }, h),
     ] }, h)
 
@@ -565,7 +711,7 @@ const overlayView = (model: Model, h: HtmlBuilder<Message>): Html =>
       ? []
       : [
           box({ class: 'fixed inset-0 z-40', attributes: [h.AriaHidden(true), h.OnClick(Message.ClickedCloseOverlay())] }, h),
-          model.overlay.kind === 'emoji' ? emojiPicker(model, model.overlay.anchor, h) : actionsMenu(model, model.overlay.messageId, model.overlay.anchor, h),
+          model.overlay.kind === 'emoji' ? emojiPicker(model, model.overlay.anchor, h) : actionsMenu(model.overlay.messageId, model.overlay.where, model.overlay.anchor, h),
         ] }, h)
 
 const confirmDialog = (model: Model, h: HtmlBuilder<Message>): Html =>
@@ -574,7 +720,10 @@ const confirmDialog = (model: Model, h: HtmlBuilder<Message>): Html =>
       model: model.confirm,
       toParentMessage: message => Message.GotConfirmDialog({ message }),
       title: 'Delete message',
-      description: 'Are you sure you want to delete this message? This cannot be undone.',
+      description:
+        model.messages.some(message => message.threadId !== null && message.threadId === model.deleting)
+          ? 'Are you sure you want to delete this message and its thread? This cannot be undone.'
+          : 'Are you sure you want to delete this message? This cannot be undone.',
       content: () => {
         const message = model.messages.find(candidate => candidate.id === model.deleting)
         return message === undefined ? [] : [box({ class: 'max-h-40 overflow-hidden rounded-md border px-3 py-2 text-[15px]', children: messageText(message.text, model.members, h) }, h)]
@@ -608,8 +757,39 @@ const introView = (model: Model, h: HtmlBuilder<Message>): Html => {
     ] }, h)
 }
 
+/** One message in a list, its own region: it redraws only when it changes. */
+const messageRegion = (model: Model, message: ChatMessage, isFirst: boolean, where: Where, summary: ThreadSummary | null, h: HtmlBuilder<Message>): Html =>
+  region(h, {
+    id: `${where === 'thread' ? 'thread-' : ''}message-${message.id}`,
+    deps: [
+      message,
+      isFirst,
+      model.members,
+      model.editing?.id === message.id && model.editing.where === where ? model.editing : null,
+      model.overlay?.messageId === message.id && model.overlay.where === where ? model.overlay : null,
+      canWrite(model),
+      summary?.count ?? 0,
+      summary?.lastAt ?? 0,
+      summary?.replierIds.join() ?? '',
+      model.thread?.id === message.id,
+      message.threadId === null ? null : model.messages.find(candidate => candidate.id === message.threadId)?.text,
+      model.now,
+    ],
+    render: () => messageView(model, message, isFirst, where, summary, h),
+  })
+
+const summariesOf = (messages: ReadonlyArray<ChatMessage>): ReadonlyMap<string, ThreadSummary> => {
+  const byThread = new Map<string, Array<ChatMessage>>()
+  for (const message of messages) if (message.threadId !== null) byThread.set(message.threadId, [...(byThread.get(message.threadId) ?? []), message])
+  return new Map([...byThread].flatMap(([id, replies]) => {
+    const summary = summaryOf(replies)
+    return summary === null ? [] : [[id, summary] as const]
+  }))
+}
+
 const listView = (model: Model, h: HtmlBuilder<Message>): Html => {
-  const rows = rowsOf(model.messages, model.readMarker, model.me.id)
+  const rows = rowsOf(model.messages.filter(inChannel), model.readMarker, model.me.id)
+  const summaries = summariesOf(model.messages)
   // A reversed column keeps the newest message in view: the list goes in as one block.
   return box({ class: 'flex min-h-0 flex-1 flex-col-reverse overflow-y-auto', attributes: [h.Id('message-list'), h.DataAttribute('keep-scroll', `messages-${model.channelId}`)], children: [
       box({ as: 'ol', class: 'flex flex-col pb-2', attributes: [h.AriaLabel('Messages')], children: [
@@ -619,12 +799,44 @@ const listView = (model: Model, h: HtmlBuilder<Message>): Html => {
               ? box({ as: 'li', class: slack.dayDivider, attributes: [h.Key(`day-${row.day}`)], children: [box({ as: 'span', children: [dayLabel(row.at, model.now)] }, h)] }, h)
               : row._tag === 'new'
                 ? box({ as: 'li', class: slack.newDivider, attributes: [h.Key('new'), h.Id('new-divider')], children: ['New'] }, h)
-                : region(h, {
-                    id: `message-${row.message.id}`,
-                    deps: [row.message, row.isFirst, model.members, model.editing?.id === row.message.id ? model.editing : null, model.overlay?.messageId === row.message.id ? model.overlay : null, canWrite(model)],
-                    render: () => messageView(model, row.message, row.isFirst, h),
-                  }),
+                : messageRegion(model, row.message, row.isFirst, 'channel', row.message.threadId === null ? (summaries.get(row.message.id) ?? null) : null, h),
           ),
+        ] }, h),
+    ] }, h)
+}
+
+const threadView = (model: Model, h: HtmlBuilder<Message>): Html => {
+  const thread = model.thread
+  const root = thread === null ? undefined : model.messages.find(message => message.id === thread.id)
+  if (thread === null || root === undefined || model.channel === null) return box({ attributes: [h.Id('thread')] }, h)
+  const replies = repliesOf(model.messages, root.id)
+  const rows = rowsOf(replies, Number.MAX_SAFE_INTEGER, model.me.id)
+  const where = model.channel.kind === 'dm' ? 'direct message' : `#${model.channel.name}`
+  return box({ as: 'aside', class: slack.thread, attributes: [h.Id('thread'), h.AriaLabel('Thread')], children: [
+      box({ as: 'header', class: 'flex min-h-[49px] shrink-0 items-center gap-2 border-b px-4', children: [
+          box({ as: 'h2', class: 'text-[18px] font-black', children: ['Thread'] }, h),
+          box({ as: 'span', class: 'min-w-0 flex-1 truncate text-[13px] text-muted-foreground', children: [model.channel.kind === 'dm' ? titleOf(model) : `#${model.channel.name}`] }, h),
+          button({ id: 'close-thread', variant: 'ghost', size: 'icon-sm', ariaLabel: 'Close thread', title: 'Close', onClick: Message.ClickedCloseThread(), children: [Icon.x({}, h)] }, h),
+        ] }, h),
+      box({ class: 'min-h-0 flex-1 overflow-y-auto', attributes: [h.Id('thread-list')], children: [
+          box({ as: 'ol', class: 'flex flex-col py-2', attributes: [h.AriaLabel('Thread messages')], children: [
+              messageRegion(model, root, true, 'thread', null, h),
+              ...(replies.length === 0
+                ? []
+                : [box({ as: 'li', class: slack.replyDivider, attributes: [h.Key('replies')], children: [box({ as: 'span', children: [`${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`] }, h)] }, h)]),
+              ...rows.flatMap(row => (row._tag === 'message' ? [messageRegion(model, row.message, row.isFirst, 'thread', null, h)] : [])),
+            ] }, h),
+          canWrite(model)
+            ? box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedThreadDraft())], children: [
+                textarea({ id: 'thread-composer', value: thread.draft, rows: 1, placeholder: 'Reply…', onInput: text => Message.ChangedThreadDraft({ text }), ariaLabel: 'Reply in thread', resize: 'none', variant: 'slack-composer' }, h),
+                box({ class: 'flex items-center gap-1 px-2 pb-1.5', children: [
+                    box({ class: 'flex-1 text-[13px]', children: [
+                        checkbox({ id: 'also-send', isChecked: thread.alsoSend, onToggle: isChecked => Message.ToggledAlsoSend({ isChecked }), label: `Also send ${model.channel.kind === 'dm' ? 'as direct message' : `to ${where}`}` }, h),
+                      ] }, h),
+                    button({ id: 'send-reply', variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send reply', title: 'Send reply', isDisabled: thread.draft.trim() === '' || thread.isSending, children: [Icon.icon('send', {}, h)] }, h),
+                  ] }, h),
+              ] }, h)
+            : box({}, h),
         ] }, h),
     ] }, h)
 }
@@ -678,11 +890,12 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
             deps: [model.nav, model.members, model.channelId, model.collapsed],
             render: () => sidebar({ nav: model.nav, members: model.members, activeId: model.channelId, collapsed: model.collapsed, onToggleSection: section => Message.ClickedToggleSection({ section }) }, h),
           }),
-          box({ as: 'main', class: slack.main, children: [
+          box({ as: 'main', class: slack.main, attributes: model.thread === null ? [] : [h.DataAttribute('split', '')], children: [
               region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id], render: () => headerView(model, h) }),
-              region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay], render: () => listView(model, h) }),
+              region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id], render: () => listView(model, h) }),
               region(h, { id: 'composer-area', deps: [model.draft, model.isSending, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
             ] }, h),
+          region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now], render: () => threadView(model, h) }),
         ] }, h),
       region(h, {
         id: 'keys',
@@ -739,7 +952,9 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
       const slice = sliceOf(state, channelId, me.id)
       if (slice.channel === null) return yield* new PageNotFound()
       const now = yield* Clock.currentTimeMillis
-      return { me, channelId, channel: slice.channel, members: slice.members, messages: slice.messages, older: slice.older, nav: slice.nav, now, readMarker: readAt(state.reads, me.id, channelId) }
+      const asked = request.params['thread']
+      const threadId = slice.messages.some(message => message.id === asked && message.threadId === null) ? (asked ?? null) : null
+      return { me, channelId, channel: slice.channel, members: slice.members, messages: slice.messages, older: slice.older, nav: slice.nav, now, readMarker: readAt(state.reads, me.id, channelId), threadId }
     }),
   init,
   update,
@@ -748,6 +963,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   clientCommands: {
     FocusElement: ({ selector }) => (typeof selector === 'string' ? { focus: selector } : undefined),
+    ReplaceUrl: ({ url }) => (typeof url === 'string' ? { replaceUrl: url } : undefined),
   },
-  snapshotDeps: model => [model.draft, model.readMarker, model.notice, model.collapsed, model.editing, model.overlay, model.emojiQuery, model.deleting, model.confirm],
+  snapshotDeps: model => [model.draft, model.thread, model.readMarker, model.notice, model.collapsed, model.editing, model.overlay, model.emojiQuery, model.deleting, model.confirm],
 }

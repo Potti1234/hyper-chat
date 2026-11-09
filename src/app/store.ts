@@ -8,6 +8,7 @@ import {
   type DemoCounts,
   type InvalidChange,
   type Op,
+  type PostOptions,
   type WorkspaceData,
   addDemo,
   addMember,
@@ -67,7 +68,7 @@ export class Workspace extends Context.Service<
     readonly addMember: (input: NewAccount) => Effect.Effect<Member, InvalidChange>
     readonly setTheme: (memberId: string, isDark: boolean) => Effect.Effect<void>
     readonly setPreset: (memberId: string, theme: string) => Effect.Effect<void>
-    readonly postMessage: (channelId: string, text: string, actorId: string) => Effect.Effect<Message, InvalidChange>
+    readonly postMessage: (channelId: string, text: string, actorId: string, options?: PostOptions) => Effect.Effect<Message, InvalidChange>
     readonly markRead: (channelId: string, memberId: string) => Effect.Effect<void>
     readonly editMessage: (messageId: string, text: string, actorId: string) => Effect.Effect<Message, InvalidChange>
     readonly deleteMessage: (messageId: string, actorId: string) => Effect.Effect<void, InvalidChange>
@@ -97,7 +98,7 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
     }),
   setTheme: (memberId, isDark) => backend.run(setTheme(memberId, isDark)),
   setPreset: (memberId, theme) => backend.run(setPreset(memberId, theme)),
-  postMessage: (channelId, text, actorId) => backend.run(postMessage(channelId, text, actorId)),
+  postMessage: (channelId, text, actorId, options) => backend.run(postMessage(channelId, text, actorId, options)),
   markRead: (channelId, memberId) => backend.run(markRead(channelId, memberId)),
   editMessage: (messageId, text, actorId) => backend.run(editMessage(messageId, text, actorId)),
   deleteMessage: (messageId, actorId) => backend.run(deleteMessage(messageId, actorId)),

@@ -102,15 +102,24 @@ export const messageText = (text: string): Effect.Effect<string, InvalidChange> 
   return Effect.succeed(body)
 }
 
+export type PostOptions = Readonly<{ threadId?: string | null; alsoInChannel?: boolean }>
+
+/** Posts to a conversation, or as a reply in a thread of one of its messages. */
 export const postMessage =
-  (channelId: string, text: string, actorId: string): Op<Message, InvalidChange> =>
+  (channelId: string, text: string, actorId: string, options: PostOptions = {}): Op<Message, InvalidChange> =>
   (data, { at, id }) =>
     Effect.gen(function* () {
       const channel = yield* findChannel(data, channelId)
       if (channel.isArchived) return yield* invalid('This channel is archived.')
       if (!isMemberOf(channel, actorId)) return yield* invalid(`Join #${channel.name} to write in it.`)
       const body = yield* messageText(text)
-      const message: Message = { id: id('msg'), channelId, authorId: actorId, text: body, createdAt: at, editedAt: null, reactions: [], isDemo: false }
+      const threadId = options.threadId ?? null
+      if (threadId !== null) {
+        const parent = data.messages.find(candidate => candidate.id === threadId)
+        if (parent === undefined || parent.channelId !== channelId) return yield* invalid('That thread was deleted.')
+        if (parent.threadId !== null) return yield* invalid('Reply to the thread itself.')
+      }
+      const message: Message = { id: id('msg'), channelId, authorId: actorId, text: body, createdAt: at, editedAt: null, reactions: [], threadId, alsoInChannel: threadId !== null && options.alsoInChannel === true, isDemo: false }
       return [message, { ...data, messages: [...data.messages, message], reads: withRead(data.reads, { memberId: actorId, channelId, at }) }] as const
     })
 
@@ -137,14 +146,14 @@ export const editMessage =
       return [edited, replaceMessage(data, message, edited)] as const
     })
 
-/** Only its author deletes a message. */
+/** Only its author deletes a message; a thread goes with its replies. */
 export const deleteMessage =
   (messageId: string, actorId: string): Op<void, InvalidChange> =>
   data =>
     Effect.gen(function* () {
       const message = yield* findMessage(data, messageId)
       if (message.authorId !== actorId) return yield* invalid('You can only delete your own messages.')
-      return [undefined, { ...data, messages: data.messages.filter(candidate => candidate !== message) }] as const
+      return [undefined, { ...data, messages: data.messages.filter(candidate => candidate !== message && candidate.threadId !== message.id) }] as const
     })
 
 /** Adds your reaction, or takes it back if it is there. Members of the
