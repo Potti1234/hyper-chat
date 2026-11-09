@@ -1,6 +1,7 @@
 import { Data, Effect } from 'effect'
 
 import { AVATAR_COLORS, type Channel, MAX_MESSAGE, type Member, type Message, type Read, canRead, isMemberOf } from './domain'
+import { isEmoji } from './emoji'
 
 /* The workspace's data and every change to it, as pure operations: an
    operation takes the data (and the time and an id source) and returns its
@@ -111,6 +112,61 @@ export const postMessage =
       const body = yield* messageText(text)
       const message: Message = { id: id('msg'), channelId, authorId: actorId, text: body, createdAt: at, editedAt: null, reactions: [], isDemo: false }
       return [message, { ...data, messages: [...data.messages, message], reads: withRead(data.reads, { memberId: actorId, channelId, at }) }] as const
+    })
+
+const findMessage = (data: WorkspaceData, messageId: string): Effect.Effect<Message, InvalidChange> => {
+  const message = data.messages.find(candidate => candidate.id === messageId)
+  return message === undefined ? invalid('That message was deleted.') : Effect.succeed(message)
+}
+
+const replaceMessage = (data: WorkspaceData, before: Message, after: Message): WorkspaceData => ({
+  ...data,
+  messages: data.messages.map(message => (message === before ? after : message)),
+})
+
+/** Only its author edits a message (Slack's default permission). */
+export const editMessage =
+  (messageId: string, text: string, actorId: string): Op<Message, InvalidChange> =>
+  (data, { at }) =>
+    Effect.gen(function* () {
+      const message = yield* findMessage(data, messageId)
+      if (message.authorId !== actorId) return yield* invalid('You can only edit your own messages.')
+      const body = yield* messageText(text)
+      if (body === message.text) return [message, data] as const
+      const edited: Message = { ...message, text: body, editedAt: at }
+      return [edited, replaceMessage(data, message, edited)] as const
+    })
+
+/** Only its author deletes a message. */
+export const deleteMessage =
+  (messageId: string, actorId: string): Op<void, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      const message = yield* findMessage(data, messageId)
+      if (message.authorId !== actorId) return yield* invalid('You can only delete your own messages.')
+      return [undefined, { ...data, messages: data.messages.filter(candidate => candidate !== message) }] as const
+    })
+
+/** Adds your reaction, or takes it back if it is there. Members of the
+ *  conversation react, with an emoji from the picker. */
+export const toggleReaction =
+  (messageId: string, emoji: string, actorId: string): Op<void, InvalidChange> =>
+  data =>
+    Effect.gen(function* () {
+      if (!isEmoji(emoji)) return yield* invalid('Pick an emoji from the list.')
+      const message = yield* findMessage(data, messageId)
+      const channel = yield* findChannel(data, message.channelId)
+      if (!isMemberOf(channel, actorId)) return yield* invalid(`Join #${channel.name} to react.`)
+      const current = message.reactions.find(reaction => reaction.emoji === emoji)
+      const reactions =
+        current === undefined
+          ? [...message.reactions, { emoji, memberIds: [actorId] }]
+          : message.reactions
+              .map(reaction =>
+                reaction !== current ? reaction : { emoji, memberIds: current.memberIds.includes(actorId) ? current.memberIds.filter(id => id !== actorId) : [...current.memberIds, actorId] },
+              )
+              .filter(reaction => reaction.memberIds.length > 0)
+      return [undefined, replaceMessage(data, message, { ...message, reactions })] as const
     })
 
 /** Someone has read a conversation up to its newest message. */

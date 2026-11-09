@@ -13,6 +13,9 @@ import {
   addMember,
   clearDemo,
   markRead,
+  editMessage,
+  deleteMessage,
+  toggleReaction,
   postMessage,
   setPreset,
   setTheme,
@@ -66,6 +69,9 @@ export class Workspace extends Context.Service<
     readonly setPreset: (memberId: string, theme: string) => Effect.Effect<void>
     readonly postMessage: (channelId: string, text: string, actorId: string) => Effect.Effect<Message, InvalidChange>
     readonly markRead: (channelId: string, memberId: string) => Effect.Effect<void>
+    readonly editMessage: (messageId: string, text: string, actorId: string) => Effect.Effect<Message, InvalidChange>
+    readonly deleteMessage: (messageId: string, actorId: string) => Effect.Effect<void, InvalidChange>
+    readonly toggleReaction: (messageId: string, emoji: string, actorId: string) => Effect.Effect<void, InvalidChange>
     /** Adds the demo content (false: it is there already). */
     readonly seedDemo: (demo: WorkspaceData) => Effect.Effect<boolean, InvalidChange>
     readonly clearDemo: Effect.Effect<DemoCounts>
@@ -93,6 +99,9 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
   setPreset: (memberId, theme) => backend.run(setPreset(memberId, theme)),
   postMessage: (channelId, text, actorId) => backend.run(postMessage(channelId, text, actorId)),
   markRead: (channelId, memberId) => backend.run(markRead(channelId, memberId)),
+  editMessage: (messageId, text, actorId) => backend.run(editMessage(messageId, text, actorId)),
+  deleteMessage: (messageId, actorId) => backend.run(deleteMessage(messageId, actorId)),
+  toggleReaction: (messageId, emoji, actorId) => backend.run(toggleReaction(messageId, emoji, actorId)),
   seedDemo: demo => backend.run(addDemo(demo)),
   clearDemo: backend.run(clearDemo()),
 })

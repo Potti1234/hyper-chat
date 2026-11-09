@@ -27,6 +27,8 @@ export const buttonVariants = cva(
           'hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50',
         destructive:
           'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
+        // A confirmed destructive action (Slack's red Delete).
+        danger: 'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/30',
         link: 'text-primary underline-offset-4 hover:underline',
         // The Slack frame (rail and sidebar) on its dark sidebar colours.
         sidebar: 'w-full justify-start font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
@@ -36,6 +38,12 @@ export const buttonVariants = cva(
         rail: 'text-sidebar-foreground hover:text-sidebar-accent-foreground [&_[data-slot=rail-icon]]:hover:bg-sidebar-accent',
         'rail-active': 'text-sidebar-accent-foreground [&_[data-slot=rail-icon]]:bg-sidebar-accent',
         // The composer's send button: grey until there is something to send.
+        // Reactions under a message: a pill, blue when you are one of them.
+        reaction: 'h-6 gap-1 rounded-full border-border bg-muted/60 px-1.5 text-[12px] font-semibold text-muted-foreground hover:border-muted-foreground/40 hover:bg-background',
+        'reaction-mine': 'h-6 gap-1 rounded-full border-link/60 bg-link/10 px-1.5 text-[12px] font-semibold text-link hover:bg-link/15',
+        // A cell of the emoji picker and the hover toolbar's buttons.
+        emoji: 'text-[20px] hover:bg-muted',
+        toolbar: 'text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted',
         send: 'bg-primary text-primary-foreground hover:bg-primary/90 data-[disabled]:bg-transparent data-[disabled]:text-muted-foreground data-[disabled]:opacity-100 aria-disabled:bg-transparent aria-disabled:text-muted-foreground aria-disabled:opacity-100',
       },
       size: {
@@ -75,6 +83,16 @@ export type ButtonProps<Msg> = ButtonBehaviorProps<Msg> &
     variant?: ButtonVariants['variant']
     size?: ButtonVariants['size']
     class?: string
+    /** CSS anchor name: the popover this button opens is placed against it
+     *  (src/lib/anchored.ts). */
+    anchorName?: string
+    /** What the button opens (aria-haspopup) and whether it is open. */
+    popup?: 'menu' | 'dialog'
+    isExpanded?: boolean
+    /** A toggle button's state (aria-pressed). */
+    isPressed?: boolean
+    /** A marker the page's own code or tests find the button by: data-<name>. */
+    marker?: readonly [name: string, value: string]
   }>
 
 export const button = <Msg>(
@@ -89,6 +107,11 @@ export const button = <Msg>(
       h.DataAttribute('variant', variant),
       ...(props.dataSize === undefined ? [h.DataAttribute('size', size)] : []),
       h.Class(cn(buttonVariants({ variant, size }), props.class)),
+      ...(props.anchorName === undefined ? [] : [h.Style({ anchorName: props.anchorName })]),
+      ...(props.popup === undefined ? [] : [h.AriaHasPopup(props.popup)]),
+      ...(props.isExpanded === undefined ? [] : [h.AriaExpanded(props.isExpanded)]),
+      ...(props.isPressed === undefined ? [] : [h.AriaPressed(String(props.isPressed))]),
+      ...(props.marker === undefined ? [] : [h.DataAttribute(props.marker[0], props.marker[1])]),
     ],
     h,
   )

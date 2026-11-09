@@ -27,6 +27,36 @@ describe('workspace', () => {
     }).pipe(Effect.provide(workspaceLayer())),
   )
 
+  it.effect('lets only the author edit and delete a message', () =>
+    Effect.gen(function* () {
+      const workspace = yield* Workspace
+      const message = yield* workspace.postMessage('ch_general', 'Draft', 'mem_avery')
+      const other = yield* Effect.flip(workspace.editMessage(message.id, 'Hijacked', 'mem_blake'))
+      assert.strictEqual(other.reason, 'You can only edit your own messages.')
+      const edited = yield* workspace.editMessage(message.id, ' Final ', 'mem_avery')
+      assert.strictEqual(edited.text, 'Final')
+      assert.isNotNull(edited.editedAt)
+      assert.strictEqual((yield* Effect.flip(workspace.deleteMessage(message.id, 'mem_blake'))).reason, 'You can only delete your own messages.')
+      yield* workspace.deleteMessage(message.id, 'mem_avery')
+      assert.isFalse((yield* workspace.current).messages.some(candidate => candidate.id === message.id))
+    }).pipe(Effect.provide(workspaceLayer())),
+  )
+
+  it.effect('toggles reactions for members, with emoji from the picker', () =>
+    Effect.gen(function* () {
+      const workspace = yield* Workspace
+      const message = yield* workspace.postMessage('ch_general', 'Ship it', 'mem_avery')
+      const reactions = () => Effect.map(workspace.current, state => state.messages.find(candidate => candidate.id === message.id)?.reactions)
+      yield* workspace.toggleReaction(message.id, '🚀', 'mem_blake') // eslint-disable-line crease/no-native-glyphs -- reaction content
+      yield* workspace.toggleReaction(message.id, '🚀', 'mem_casey') // eslint-disable-line crease/no-native-glyphs -- reaction content
+      assert.deepStrictEqual(yield* reactions(), [{ emoji: '🚀', memberIds: ['mem_blake', 'mem_casey'] }]) // eslint-disable-line crease/no-native-glyphs -- reaction content
+      yield* workspace.toggleReaction(message.id, '🚀', 'mem_blake') // eslint-disable-line crease/no-native-glyphs -- reaction content
+      yield* workspace.toggleReaction(message.id, '🚀', 'mem_casey') // eslint-disable-line crease/no-native-glyphs -- reaction content
+      assert.deepStrictEqual(yield* reactions(), [])
+      assert.strictEqual((yield* Effect.flip(workspace.toggleReaction(message.id, 'nope', 'mem_blake'))).reason, 'Pick an emoji from the list.')
+    }).pipe(Effect.provide(workspaceLayer())),
+  )
+
   it.effect('clears the demo content', () =>
     Effect.gen(function* () {
       const workspace = yield* Workspace

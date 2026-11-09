@@ -93,6 +93,7 @@ export const slack = {
   messageGutter: 'message-gutter',
   messageHoverTime: 'message-hover-time',
   messageText: 'message-text',
+  messageActions: 'message-actions',
   mention: 'mention',
   dayDivider: 'day-divider',
   newDivider: 'new-divider',
