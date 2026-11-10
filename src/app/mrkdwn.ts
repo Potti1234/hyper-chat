@@ -6,7 +6,7 @@ import { emojiByName } from './emoji'
    Blocks, by line: ``` fences a code block, `>` quotes, `-`/`*`/`•` start a
    bulleted item and `1.` a numbered one; other lines are paragraphs.
    Inline: `code`, *bold* (or **bold**), _italic_, ~strike~, [label](url),
-   bare links, @mentions and :emoji: names. A marker opens only after a space
+   bare links, @mentions, #channels and :emoji: names. A marker opens only after a space
    or punctuation and closes only before one, so snake_case_words and 2*3*4
    stay as typed (Slack's rule). */
 
@@ -16,6 +16,7 @@ export type Inline =
   | Readonly<{ kind: 'bold' | 'italic' | 'strike'; children: ReadonlyArray<Inline> }>
   | Readonly<{ kind: 'link'; url: string; children: ReadonlyArray<Inline> }>
   | Readonly<{ kind: 'mention'; handle: string }>
+  | Readonly<{ kind: 'channel'; name: string }>
   | Readonly<{ kind: 'emoji'; glyph: string; name: string }>
   | Readonly<{ kind: 'break' }>
 
@@ -120,6 +121,15 @@ export const parseInline = (text: string): ReadonlyArray<Inline> => {
         flush()
         out.push({ kind: 'mention', handle: (mention[1] ?? '').toLowerCase() })
         index += mention[0].length
+        continue
+      }
+    }
+    if (char === '#' && (before === undefined || /[\s(]/.test(before))) {
+      const channel = /^#(\p{L}(?:[\p{L}\p{N}_-]*[\p{L}\p{N}])?)/u.exec(rest)
+      if (channel !== null) {
+        flush()
+        out.push({ kind: 'channel', name: (channel[1] ?? '').toLowerCase() })
+        index += channel[0].length
         continue
       }
     }
@@ -229,6 +239,8 @@ export const plainText = (text: string): string => {
             return inline(node.children)
           case 'mention':
             return `@${node.handle}`
+          case 'channel':
+            return `#${node.name}`
           case 'emoji':
             return node.glyph
           case 'break':

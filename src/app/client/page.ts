@@ -135,6 +135,7 @@ export const Message = defineMessageUnion({
   ClickedEmoji: { emoji: S.String },
   ClickedMore: { messageId: S.String, where: Where },
   ClickedMarkUnread: { messageId: S.String },
+  ClickedCopyLink: { messageId: S.String },
   ClickedSave: { messageId: S.String },
   ClickedPin: { messageId: S.String },
   ClickedCloseOverlay: {},
@@ -194,6 +195,7 @@ export const ClientMessage = S.Union([
   Message.ClickedEmoji,
   Message.ClickedMore,
   Message.ClickedMarkUnread,
+  Message.ClickedCopyLink,
   Message.ClickedSave,
   Message.ClickedPin,
   Message.ClickedCloseOverlay,
@@ -684,6 +686,8 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
         // Stays unread while you look at it, until you open the conversation again.
         return { model: { ...model, overlay: null, readMarker: found.createdAt - 1, markedUpTo: Number.MAX_SAFE_INTEGER }, commands: [MarkUnread({ messageId, actorId: model.me.id })] }
       },
+      // public/composer.js copies the link in the browser; this only says so.
+      ClickedCopyLink: ({ messageId }) => ({ model: { ...model, overlay: null, notice: model.messages.some(message => message.id === messageId) ? 'Link copied to clipboard' : model.notice } }),
       ClickedSave: ({ messageId }) => {
         if (model.channel === null || !model.messages.some(message => message.id === messageId)) return { model }
         const saved = model.saved.includes(messageId) ? model.saved.filter(id => id !== messageId) : [...model.saved, messageId]
@@ -1069,6 +1073,7 @@ const actionsMenu = (model: Model, messageId: string, where: Where, anchor: stri
       ...(where === 'channel' && pinnable(model, messageId) !== undefined
         ? [optionRow({ id: 'menu-pin', value: 'pin', isActive: false, onClick: Message.ClickedPin({ messageId }), children: [Icon.icon(model.pins.some(pin => pin.id === messageId) ? 'x' : 'pin', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: [model.pins.some(pin => pin.id === messageId) ? 'Un-pin from this conversation' : 'Pin to this conversation'] }, h)] }, h)]
         : []),
+      optionRow({ id: 'menu-copy-link', value: 'copy-link', isActive: false, onClick: Message.ClickedCopyLink({ messageId }), copyPath: `/archives/${model.channelId}/${messageId}`, children: [Icon.icon('link', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Copy link'] }, h)] }, h),
       ...(isMine ? [optionRow({ id: 'menu-edit', value: 'edit', isActive: false, onClick: Message.ClickedEdit({ messageId, where }), children: [Icon.icon('pencil', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Edit message'] }, h)] }, h),
       optionRow({ id: 'menu-delete', value: 'delete', isActive: false, onClick: Message.ClickedDelete({ messageId }), children: [Icon.icon('trash-2', { class: 'size-4 text-destructive' }, h), box({ as: 'span', class: 'flex-1 text-destructive', children: ['Delete message…'] }, h)] }, h)] : []),
     ] }, h)

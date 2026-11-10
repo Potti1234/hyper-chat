@@ -17,6 +17,7 @@ import * as PreferencesPage from '@/app/preferences/page'
 import * as DmsPage from '@/app/dms/page'
 import * as ThreadsPage from '@/app/threads/page'
 import * as Files from '@/app/files'
+import * as Links from '@/app/links'
 import * as Postgres from '@/app/postgres'
 
 /* The server: one hyper-effect layer per page, plain routes for sign-in and
@@ -58,6 +59,7 @@ const Routes = Layer.mergeAll(
   Hyper.layer(ClientPage.program, { ...page, path: '/client/:channel', paths: ['/', '/client/:channel/thread/:thread'], prefetch: ['/client/*'] }),
   Auth.routes,
   Files.routes,
+  Links.routes,
   HttpRouter.add('GET', '/favicon.ico', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),
   HttpRouter.add('GET', '/favicon.svg', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),
   HttpRouter.add('GET', '/styles.css', HttpServerResponse.file(publicFile('styles.css'), { contentType: 'text/css' })),

@@ -9,6 +9,8 @@
      server replaces the page, and a panel briefly emptied jumps back to the
      top. Positions saved during that time would be wrong, so they are not
      saved then.
+   - A message named by the URL's #message-… (a permalink) is scrolled to
+     the middle of its panel instead.
    - If the page's current item (aria-current="page") ends up out of view,
      it is scrolled into view.
 
@@ -42,6 +44,15 @@ const save = panel => {
   }
 }
 
+/** The message the URL's #message-… / #thread-message-… names, if this
+ *  panel holds it. */
+const linkedIn = panel => {
+  const id = decodeURIComponent(location.hash.slice(1))
+  if (!/^(thread-)?message-/.test(id)) return null
+  const item = document.getElementById(id)
+  return item !== null && panel.contains(item) ? item : null
+}
+
 const isRestoring = () => !isUserDriven && performance.now() - started < RESTORE_FOR
 
 const restore = () => {
@@ -49,6 +60,15 @@ const restore = () => {
   for (const panel of document.querySelectorAll('[data-keep-scroll]')) {
     const name = nameOf(panel)
     if (!targets.has(name)) targets.set(name, read(name))
+    const linked = linkedIn(panel)
+    if (linked !== null) {
+      // A message permalink (/archives/…): centre the message instead.
+      const box = panel.getBoundingClientRect()
+      const item = linked.getBoundingClientRect()
+      const offset = item.top - box.top - (box.height - item.height) / 2
+      if (Math.abs(offset) > 1) panel.scrollTop += offset
+      continue
+    }
     const top = targets.get(name)
     if (top > 0 && Math.abs(panel.scrollTop - top) > 1) panel.scrollTop = top
     // A virtual panel may have been scrolled before its event bindings were

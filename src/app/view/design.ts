@@ -52,6 +52,8 @@ export const optionRow = <Msg>(
     value: string
     isActive: boolean
     onClick: Msg
+    /** A path public/composer.js copies to the clipboard as a full URL. */
+    copyPath?: string
     children: ReadonlyArray<Html | string>
   }>,
   h: HtmlBuilder<Msg>,
@@ -64,6 +66,7 @@ export const optionRow = <Msg>(
       h.AriaSelected(props.isActive),
       h.DataAttribute('active', String(props.isActive)),
       h.DataAttribute('value', props.value),
+      ...(props.copyPath === undefined ? [] : [h.DataAttribute('copy-link', props.copyPath)]),
       h.Tabindex(-1),
       h.Class('relative flex h-8 w-full cursor-default items-center gap-2.5 rounded-md px-2 text-left text-[13px] outline-hidden select-none hover:bg-accent data-[active=true]:bg-accent data-[active=true]:text-accent-foreground'),
       h.OnClick(props.onClick),

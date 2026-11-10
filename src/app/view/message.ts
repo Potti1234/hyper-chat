@@ -32,6 +32,8 @@ const inline = <Msg>(nodes: ReadonlyArray<Inline>, members: ReadonlyArray<Member
         return box({ as: 'a', attributes: [h.Href(node.url), h.Target('_blank'), h.Rel('noopener noreferrer')], children: inline(node.children, members, h) }, h)
       case 'emoji':
         return box({ as: 'span', attributes: [h.Title(`:${node.name}:`), h.DataAttribute('emoji-name', node.name)], children: [node.glyph] }, h)
+      case 'channel':
+        return box({ as: 'a', class: slack.mention, attributes: [h.Href(`/channel/${encodeURIComponent(node.name)}`), h.DataAttribute('channel-link', node.name)], children: [`#${node.name}`] }, h)
       case 'mention': {
         const member = members.find(candidate => handleOf(candidate) === node.handle)
         if (member !== undefined) return box({ as: 'span', class: slack.mention, attributes: [h.DataAttribute('mention', member.id)], children: [`@${member.name}`] }, h)

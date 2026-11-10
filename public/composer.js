@@ -1,7 +1,8 @@
 // Slack's formatting in the composers (src/app/view/composer.ts): the
 // formatting bar and its shortcuts wrap the selection in mrkdwn
 // (src/app/mrkdwn.ts), or start lines as a quote or list. The edit is sent
-// to the page as an input event, like typing.
+// to the page as an input event, like typing. Menu rows marked
+// data-copy-link copy that link to the clipboard.
 ;(() => {
   const WRAP = {
     bold: ['*', '*'],
@@ -70,6 +71,13 @@
     if (button === null || area === null) return
     event.preventDefault()
     format(area, button.getAttribute('data-mrkdwn-format'))
+  })
+
+  // Copy link (the message menu): the full URL of the row's path.
+  document.addEventListener('click', event => {
+    const row = event.target instanceof Element ? event.target.closest('[data-copy-link]') : null
+    const path = row?.getAttribute('data-copy-link') ?? ''
+    if (path.startsWith('/')) navigator.clipboard?.writeText(location.origin + path).catch(() => {})
   })
 
   const SHORTCUTS = {

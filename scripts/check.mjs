@@ -266,6 +266,23 @@ try {
   check('it moves to the Starred section', await until(avery, () => document.querySelector('#sidebar section a[href="/client/ch_random"]')?.closest('section')?.querySelector('button')?.textContent.includes('Starred') === true))
   await avery.click('#star-channel')
   check('unstarring puts it back', await until(avery, () => document.querySelector('#sidebar section a[href="/client/ch_random"]')?.closest('section')?.querySelector('button')?.textContent.includes('Channels') === true))
+  // #channel links and Copy link
+  const linking = `Links ${Date.now()}`
+  await avery.click('#composer')
+  await avery.keyboard.type(`${linking} see #general`)
+  await avery.keyboard.press('Enter')
+  check('#channel in a message is a link', await until(avery, () => document.querySelector('#message-list li[data-author]:last-child a[data-channel-link="general"]') !== null))
+  const linked = mine(avery)
+  const linkedId = (await linked.getAttribute('id')).replace('message-', '')
+  await linked.hover()
+  await linked.getByRole('button', { name: 'More actions' }).click()
+  check('the menu offers Copy link', (await avery.locator('#menu-copy-link').getAttribute('data-copy-link')) === `/archives/ch_random/${linkedId}`)
+  await avery.click('#menu-copy-link')
+  check('copying says so', await until(avery, () => document.querySelector('#notice')?.textContent.includes('Link copied') === true))
+  await live(avery, () => avery.click('#message-list li[data-author]:last-child a[data-channel-link="general"]'))
+  check('the link opens the channel', avery.url().endsWith('/client/ch_general'))
+  await live(blake, () => blake.goto(`${base}/archives/ch_random/${linkedId}`))
+  check('a permalink opens the message', blake.url().endsWith(`/client/ch_random#message-${linkedId}`) && await until(blake, id => document.querySelector(`#message-${id}`)?.matches(':target') === true, linkedId))
   await visit(avery, '/client/ch_general')
   // Muting: the channel greys out and stops being bold.
   const generalRow = "#sidebar a[href='/client/ch_general']"
