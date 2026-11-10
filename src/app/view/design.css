@@ -23,6 +23,10 @@
   .rail-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 9999px; background: var(--sidebar-accent-foreground); }
   .workspace-icon { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 8px; background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); font-size: 18px; font-weight: 800; }
   .presence-dot { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 9999px; border: 2px solid var(--rail); background: var(--success); }
+  .presence { position: absolute; right: -3px; bottom: -3px; width: 9px; height: 9px; border-radius: 9999px; box-shadow: 0 0 0 2px var(--presence-ring, var(--sidebar)); }
+  .presence-on { background: var(--success); }
+  .presence-off { border: 1.5px solid currentColor; background: var(--presence-ring, var(--sidebar)); opacity: 0.7; }
+  .profile-pane .presence, .person-card .presence { position: static; display: inline-block; --presence-ring: var(--background); box-shadow: none; }
   .paused-badge { position: absolute; right: -4px; bottom: -4px; display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; border-radius: 9999px; border: 2px solid var(--rail); background: var(--rail); color: var(--sidebar-foreground); }
   .paused-badge svg { width: 10px; height: 10px; }
   .slack-sidebar { height: calc(100% - 40px); display: flex; width: 260px; flex-shrink: 0; flex-direction: column; border-radius: 8px 0 0 8px; background: var(--sidebar); color: var(--sidebar-foreground); }

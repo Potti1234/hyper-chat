@@ -12,7 +12,7 @@ import { textarea } from '@/ui/textarea'
 import { requireMember } from '../auth'
 import { ChannelKind, MAX_MESSAGE, Member, Message as ChatMessage, canRead, conversationName, dayLabel, formatTime, isMemberOf, mentions } from '../domain'
 import { emojiName } from '../emoji'
-import { Workspace, type WorkspaceState } from '../store'
+import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
@@ -48,6 +48,7 @@ export const Model = S.Struct({
   threads: S.Array(ThreadCard),
   nav: Nav,
   switcher: Switcher,
+  isConnected: S.Boolean,
   now: S.Number,
   /** Threads showing all their replies. */
   expanded: S.Array(S.String),
@@ -68,6 +69,7 @@ export const Message = defineMessageUnion({
   ClickedShowAll: { threadId: S.String },
   ClickedReaction: { messageId: S.String, emoji: S.String },
   GotSwitcher: { event: SwitcherEvent },
+  ChangedConnection: { isConnected: S.Boolean },
   ClickedToggleTheme: {},
   ClickedToggleSection: { section: S.String },
   ClickedDismissNotice: {},
@@ -148,7 +150,7 @@ export const threadsOf = (state: WorkspaceState, me: Member): ReadonlyArray<Thre
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; threads: ReadonlyArray<ThreadCard>; nav: Nav; now: number }>
 
 export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({
-  model: { ...flags, switcher: initSwitcher(), expanded: [], drafts: {}, sending: null, notice: null, collapsed: [] },
+  model: { ...flags, switcher: initSwitcher(), isConnected: false, expanded: [], drafts: {}, sending: null, notice: null, collapsed: [] },
 })
 
 // UPDATE
@@ -186,6 +188,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         return found !== undefined && found.reactions.some(reaction => reaction.emoji === emoji) ? { model, commands: [ToggleReaction({ messageId, emoji, actorId: model.me.id })] } : { model }
       },
       GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
+      ChangedConnection: ({ isConnected }) => ({ model: { ...model, isConnected } }),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ClickedToggleSection: ({ section }) => ({
         model: { ...model, collapsed: model.collapsed.includes(section) ? model.collapsed.filter(id => id !== section) : [...model.collapsed, section].slice(-8) },
@@ -219,6 +222,10 @@ const sameCards = (a: ReadonlyArray<ThreadCard>, b: ReadonlyArray<ThreadCard>) =
 const sameSlice = (a: Slice, b: Slice) => a.me === b.me && a.members === b.members && sameCards(a.threads, b.threads) && sameNav(a.nav, b.nav)
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
+  presence: entry(
+    { memberId: S.String, isConnected: S.Boolean },
+    { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
   threads: entry(
     { memberId: S.String },
     {
@@ -371,6 +378,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
       return { me, members: state.members, threads: threadsOf(state, me), nav: navOf(state, me), now }
     }),
   init,
+  onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   update,
   view,
   subscriptions,

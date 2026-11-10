@@ -13,7 +13,7 @@ import { input } from '@/ui/input'
 
 import { requireMember } from '../auth'
 import { ChannelKind, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, Member, canRead, channelSlug, compareChannels, isMemberOf } from '../domain'
-import { Workspace, type WorkspaceState } from '../store'
+import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, sidebar, topBar, WORKSPACE_NAME } from '../view/shell'
@@ -44,6 +44,7 @@ export const Model = S.Struct({
   nav: Nav,
   now: S.Number,
   switcher: Switcher,
+  isConnected: S.Boolean,
   members: S.Array(Member),
   collapsed: S.Array(S.String),
   filter: S.String,
@@ -70,6 +71,7 @@ export const Message = defineMessageUnion({
   ToggledPrivate: { isChecked: S.Boolean },
   SubmittedCreate: {},
   GotSwitcher: { event: SwitcherEvent },
+  ChangedConnection: { isConnected: S.Boolean },
   ClickedToggleTheme: {},
   ClickedToggleSection: { section: S.String },
   ClickedDismissNotice: {},
@@ -165,7 +167,7 @@ const emptyForm = { name: '', description: '', isPrivate: false, isSaving: false
 
 export const init = ({ isCreating, ...flags }: Flags): Update.Return<Model, Message, Workspace> => {
   const base: Model = { ...flags,
-    switcher: initSwitcher(), collapsed: [], filter: '', show: 'all', pending: null, create: Dialog.init({ id: 'create-channel' }), form: emptyForm, notice: null }
+    switcher: initSwitcher(), isConnected: false, collapsed: [], filter: '', show: 'all', pending: null, create: Dialog.init({ id: 'create-channel' }), form: emptyForm, notice: null }
   return isCreating ? withCreate(base, Dialog.open(base.create)) : { model: base }
 }
 
@@ -213,6 +215,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ToggledPrivate: ({ isChecked }) => ({ model: { ...model, form: { ...model.form, isPrivate: isChecked } } }),
       SubmittedCreate: () => create(model),
       GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
+      ChangedConnection: ({ isConnected }) => ({ model: { ...model, isConnected } }),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ClickedToggleSection: ({ section }) => ({ model: { ...model, collapsed: model.collapsed.includes(section) ? model.collapsed.filter(id => id !== section) : [...model.collapsed, section].slice(-8) } }),
       ClickedDismissNotice: () => ({ model: { ...model, notice: null } }),
@@ -238,6 +241,10 @@ const sameRow = (a: ChannelRow, b: ChannelRow) =>
 const sameSlice = (a: Slice, b: Slice) => a.me === b.me && a.members === b.members && a.rows.length === b.rows.length && a.rows.every((row, index) => sameRow(row, b.rows[index] as ChannelRow)) && sameNav(a.nav, b.nav)
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
+  presence: entry(
+    { memberId: S.String, isConnected: S.Boolean },
+    { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
   channels: entry(
     { memberId: S.String },
     {
@@ -374,6 +381,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
       return { me, rows: channelsOf(state, me), nav: navOf(state, me), members: state.members, now, isCreating: request.url.searchParams.has('new') }
     }),
   init,
+  onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   update,
   view,
   subscriptions,

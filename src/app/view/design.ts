@@ -88,6 +88,8 @@ export const slack = {
   workspaceIcon: 'workspace-icon',
   presenceDot: 'presence-dot',
   pausedBadge: 'paused-badge',
+  presenceOn: 'presence presence-on',
+  presenceOff: 'presence presence-off',
   peopleGrid: 'people-grid',
   personCard: 'person-card',
   profilePane: 'profile-pane',

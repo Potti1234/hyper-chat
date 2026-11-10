@@ -10,7 +10,7 @@ import { button, buttonLink } from '@/ui/button'
 
 import { requireMember } from '../auth'
 import { ChannelKind, Member, Message as ChatMessage, SavedState, canRead, conversationName, dayLabel, formatTime } from '../domain'
-import { Workspace, type WorkspaceState } from '../store'
+import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
@@ -39,6 +39,7 @@ export const Model = S.Struct({
   items: S.Array(LaterItem),
   nav: Nav,
   switcher: Switcher,
+  isConnected: S.Boolean,
   now: S.Number,
   tab: SavedState,
   notice: S.NullOr(S.String),
@@ -52,6 +53,7 @@ export const Message = defineMessageUnion({
   ClickedSetState: { messageId: S.String, state: SavedState },
   ClickedRemove: { messageId: S.String },
   GotSwitcher: { event: SwitcherEvent },
+  ChangedConnection: { isConnected: S.Boolean },
   ClickedToggleTheme: {},
   GotLater: { items: S.Array(LaterItem), members: S.Array(Member), nav: Nav, me: Member, now: S.Number },
   CompletedChange: {},
@@ -107,7 +109,7 @@ export const shownOf = (model: Pick<Model, 'items' | 'tab'>): ReadonlyArray<Late
 
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; items: ReadonlyArray<LaterItem>; nav: Nav; now: number; tab: SavedState }>
 
-export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({ model: { ...flags, switcher: initSwitcher(), notice: null } })
+export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({ model: { ...flags, switcher: initSwitcher(), isConnected: false, notice: null } })
 
 // UPDATE
 
@@ -131,6 +133,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ClickedRemove: ({ messageId }) =>
         model.items.some(item => item.message.id === messageId) ? { model: withState(model, messageId, null), commands: [RemoveSaved({ messageId, memberId: model.me.id })] } : { model },
       GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
+      ChangedConnection: ({ isConnected }) => ({ model: { ...model, isConnected } }),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       GotLater: data => ({ model: { ...model, ...data } }),
       CompletedChange: () => ({ model }),
@@ -155,6 +158,10 @@ const sameItems = (a: ReadonlyArray<LaterItem>, b: ReadonlyArray<LaterItem>) =>
 const sameSlice = (a: Slice, b: Slice) => a.me === b.me && a.members === b.members && sameItems(a.items, b.items) && sameNav(a.nav, b.nav)
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
+  presence: entry(
+    { memberId: S.String, isConnected: S.Boolean },
+    { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
   later: entry(
     { memberId: S.String },
     {
@@ -260,6 +267,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
       return { me, members: state.members, items: laterOf(state, me), nav: navOf(state, me), now, tab }
     }),
   init,
+  onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   update,
   view,
   subscriptions,

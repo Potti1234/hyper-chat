@@ -12,7 +12,7 @@ import { button, buttonLink } from '@/ui/button'
 import { requireMember } from '../auth'
 import { Member, dayLabel, formatTime, handleOf } from '../domain'
 import { ChannelHit, MAX_HITS, MessageHit, parseQuery, searchOf, withFilter } from '../search'
-import { Workspace, type WorkspaceState } from '../store'
+import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
@@ -40,6 +40,7 @@ export const Model = S.Struct({
   people: S.Array(Member),
   nav: Nav,
   switcher: Switcher,
+  isConnected: S.Boolean,
   now: S.Number,
 })
 export type Model = typeof Model.Type
@@ -94,7 +95,7 @@ export const urlOf = (query: string, tab: Tab) => {
 
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; query: string; tab: Tab; nav: Nav; now: number } & ReturnType<typeof searchOf>>
 
-export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({ model: { ...flags, switcher: initSwitcher() } })
+export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({ model: { ...flags, switcher: initSwitcher(), isConnected: false } })
 
 // UPDATE
 
@@ -114,7 +115,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ClickedFilter: ({ key, value }) => withQuery(model, withFilter(model.query, key, value === null ? null : value.replace(/\s+/g, '-').slice(0, 80))),
       GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
-      ChangedConnection: ({ isConnected }) => (isConnected ? { model, commands: [FocusElement({ selector: '#search-input' })] } : { model }),
+      ChangedConnection: ({ isConnected }) => (isConnected ? { model: { ...model, isConnected }, commands: [FocusElement({ selector: '#search-input' })] } : { model: { ...model, isConnected } }),
       GotResults: data => ({ model: { ...model, ...data } }),
       CompletedChange: () => ({ model }),
       CompletedBrowserAction: () => ({ model }),
@@ -140,6 +141,10 @@ const sameSlice = (a: Slice, b: Slice) =>
   sameList(a.people, b.people, (x, y) => x === y)
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
+  presence: entry(
+    { memberId: S.String, isConnected: S.Boolean },
+    { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
   results: entry(
     { memberId: S.String, query: S.String },
     {

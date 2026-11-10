@@ -16,7 +16,7 @@ import { textarea } from '@/ui/textarea'
 import { requireMember } from '../auth'
 import { Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, dmPartners, formatTime, inChannel, isMemberOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
-import { Workspace, type WorkspaceState } from '../store'
+import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
@@ -733,6 +733,10 @@ const sameItems = <A>(a: ReadonlyArray<A>, b: ReadonlyArray<A>) => a.length === 
 const sameSlice = (a: Slice, b: Slice) => a.channel === b.channel && a.members === b.members && sameItems(a.messages, b.messages) && sameItems(a.pins, b.pins) && a.saved.join() === b.saved.join() && sameNav(a.nav, b.nav) && a.me === b.me
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
+  presence: entry(
+    { memberId: S.String, isConnected: S.Boolean },
+    { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
   channel: entry(
     { channelId: S.String, memberId: S.String },
     {

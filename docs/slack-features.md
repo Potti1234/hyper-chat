@@ -33,7 +33,7 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | --- | --- | --- |
 | Sign in | Email + password / magic link / SSO | Email + password (scrypt), signed cookie, like hypertasks — **done** |
 | Workspace switcher | Several workspaces in the rail | One demo workspace ("Northwind"), shown in the rail — **done** (single workspace) |
-| Presence | Active (green dot) / away (hollow) | Active while a page of yours is connected, away otherwise — **planned** |
+| Presence | Active (green dot) / away (hollow) | Active while a page of yours is connected, away otherwise — **done** (green dot or hollow ring on DM rows, People cards and profiles; shared across app processes through Postgres with a heartbeat) |
 | Custom status | Emoji + text + "clear after" | Emoji + text, shown next to names — **done** (emoji picker, Slack's presets, clear after 30 min / 1 h / 4 h / today / this week / never) |
 | Pause notifications (DND) | Snooze for a period | A flag with a moon icon on the avatar — **done** (30 min to 24 h from your profile; Resume) |
 | Profile | Name, display name, title, pronouns, local time, status, "Message" button | Profile pane with name, title, local time, status, Message button — **done** (`/people/:id`; names in messages link to it; you edit your name, title, pronouns and time zone) |

@@ -136,6 +136,7 @@ try {
   await avery.keyboard.press('Enter')
   check('an also-sent reply shows in the channel', await sees(blake, `${reply} loud`))
   check('it says it replied to a thread', (await blake.locator('#message-list li').last().innerText()).includes('replied to a thread'))
+  await sees(avery, `${reply} loud`, '#thread')
   const own = mine(avery, '#thread')
   await own.hover()
   await own.getByRole('button', { name: 'More actions' }).click()
@@ -405,6 +406,16 @@ try {
   await avery.click('#zone-Europe-Berlin')
   await avery.click('#save-profile-button')
   await until(avery, () => !document.querySelector('#profile-name')?.textContent.includes('she/her'))
+
+  // Presence: active while a page is connected, away otherwise
+  await visit(blake, '/client/ch_general')
+  await visit(avery, '/people/mem_blake')
+  check('someone with a page open is Active', await until(avery, () => document.querySelector('#profile-presence')?.textContent.includes('Active') && document.querySelector('[data-person=mem_blake] [data-presence=active]') !== null))
+  check('someone without one is Away', await until(avery, () => document.querySelector('[data-person=mem_devon] [data-presence=away]') !== null))
+  await visit(avery, '/client/ch_general')
+  check('a DM row shows its partner as Active', await until(avery, () => document.querySelector('a[href="/client/dm_avery_blake"] [data-presence=active]') !== null))
+  await blake.goto('about:blank')
+  check('closing their page makes them Away', await until(avery, () => document.querySelector('a[href="/client/dm_avery_blake"] [data-presence=away]') !== null))
 
   for (const { errors } of people) for (const error of errors) check('no browser errors', false, error)
 } finally {

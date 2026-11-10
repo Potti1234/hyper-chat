@@ -27,6 +27,8 @@ export const NavRow = S.Struct({
   isUnread: S.Boolean,
   mentions: S.Number,
   partnerIds: S.Array(S.String),
+  /** A one-to-one DM whose partner has a page open. */
+  isOnline: S.Boolean,
 })
 export type NavRow = typeof NavRow.Type
 
@@ -38,6 +40,7 @@ export const emptyNav: Nav = { channels: [], dms: [], activity: 0 }
 
 const navRow = (state: WorkspaceState, channel: Channel, me: Member): NavRow => {
   const seen = readAt(state.reads, me.id, channel.id)
+  const partnerIds = channel.kind === 'dm' ? dmPartners(channel, me.id) : []
   const unread = state.messages.filter(message => message.channelId === channel.id && inChannel(message) && message.authorId !== me.id && message.createdAt > seen)
   return {
     id: channel.id,
@@ -46,7 +49,8 @@ const navRow = (state: WorkspaceState, channel: Channel, me: Member): NavRow => 
     isUnread: unread.length > 0,
     // Every unread direct message counts, like a mention.
     mentions: channel.kind === 'dm' ? unread.length : unread.filter(message => mentions(message.text, me)).length,
-    partnerIds: channel.kind === 'dm' ? dmPartners(channel, me.id) : [],
+    partnerIds,
+    isOnline: partnerIds.length === 1 && state.online.includes(partnerIds[0] ?? ''),
   }
 }
 
@@ -64,7 +68,7 @@ export const navOf = (state: WorkspaceState, me: Member): Nav => {
 }
 
 const sameRow = (a: NavRow, b: NavRow) =>
-  a.id === b.id && a.label === b.label && a.kind === b.kind && a.isUnread === b.isUnread && a.mentions === b.mentions && a.partnerIds.join() === b.partnerIds.join()
+  a.id === b.id && a.label === b.label && a.kind === b.kind && a.isUnread === b.isUnread && a.mentions === b.mentions && a.partnerIds.join() === b.partnerIds.join() && a.isOnline === b.isOnline
 const sameRows = (a: ReadonlyArray<NavRow>, b: ReadonlyArray<NavRow>) => a.length === b.length && a.every((row, index) => sameRow(row, b[index] as NavRow))
 export const sameNav = (a: Nav, b: Nav): boolean => a.activity === b.activity && sameRows(a.channels, b.channels) && sameRows(a.dms, b.dms)
 
@@ -146,7 +150,10 @@ const rowIcon = <Msg>(row: NavRow, members: ReadonlyArray<Member>, h: HtmlBuilde
   if (row.kind === 'public') return Icon.icon('hash', {}, h)
   if (row.kind === 'private') return Icon.icon('lock', {}, h)
   if (row.partnerIds.length > 1) return box({ as: 'span', class: slack.dmCount, children: [String(row.partnerIds.length)] }, h)
-  return avatar(members.find(member => member.id === row.partnerIds[0]), h, 'sm')
+  return box({ as: 'span', class: 'relative inline-flex', children: [
+      avatar(members.find(member => member.id === row.partnerIds[0]), h, 'sm'),
+      box({ as: 'span', class: row.isOnline ? slack.presenceOn : slack.presenceOff, attributes: [h.AriaLabel(row.isOnline ? 'Active' : 'Away'), h.DataAttribute('presence', row.isOnline ? 'active' : 'away')] }, h),
+    ] }, h)
 }
 
 const sidebarRow = <Msg>(row: NavRow, props: SidebarProps<Msg>, h: HtmlBuilder<Msg>): Html =>

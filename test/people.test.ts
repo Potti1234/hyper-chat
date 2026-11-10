@@ -1,5 +1,5 @@
 import { assert, describe, it } from '@effect/vitest'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Scope } from 'effect'
 
 import { init as peopleInit, peopleOf, update as peopleUpdate } from '@/app/people/page'
 import { clearAt, isPaused, localTime, statusOf, untilLabel } from '@/app/profile'
@@ -59,7 +59,7 @@ describe('profiles, status and people', () => {
       const avery = state.members.find(member => member.id === 'mem_avery')!
       assert.deepStrictEqual(peopleOf(state.members, 'engineer').map(member => member.id).sort(), state.members.filter(member => member.title.toLowerCase().includes('engineer')).map(member => member.id).sort())
       assert.deepStrictEqual(peopleOf(state.members, 'avery product').map(member => member.id), ['mem_avery'])
-      const flags = { me: avery, members: state.members, nav: navOf(state, avery), now: NOON_BERLIN }
+      const flags = { me: avery, members: state.members, online: [], nav: navOf(state, avery), now: NOON_BERLIN }
       const theirs = peopleInit({ ...flags, personId: 'mem_blake' }).model
       assert.isFalse(peopleUpdate(theirs, { _tag: 'ClickedEditProfile' }).model.edit.isOpen)
       assert.isFalse(peopleUpdate(theirs, { _tag: 'ClickedSetStatus' }).model.status.isOpen)
@@ -78,5 +78,25 @@ describe('profiles, status and people', () => {
       assert.strictEqual(peopleUpdate(preset, { _tag: 'SubmittedStatus' }).commands?.[0]?.name, 'SetStatus')
       assert.isUndefined(peopleUpdate(mine, { _tag: 'ClickedPause', minutes: 7 }).commands)
       assert.strictEqual(peopleUpdate(mine, { _tag: 'ClickedPause', minutes: 30 }).commands?.[0]?.name, 'SetPaused')
+    }).pipe(Effect.provide(workspaceLayer())))
+})
+
+describe('presence', () => {
+  it.effect('shows someone as active while a page of theirs is connected', () =>
+    Effect.gen(function* () {
+      const workspace = yield* Workspace
+      assert.deepStrictEqual((yield* workspace.current).online, [])
+      const first = yield* Scope.make()
+      const second = yield* Scope.make()
+      yield* Scope.provide(workspace.connect('mem_blake'), first)
+      yield* Scope.provide(workspace.connect('mem_blake'), second)
+      const state = yield* workspace.current
+      assert.deepStrictEqual(state.online, ['mem_blake'])
+      const avery = state.members.find(member => member.id === 'mem_avery')!
+      assert.isTrue(navOf(state, avery).dms.find(row => row.partnerIds.join() === 'mem_blake')?.isOnline)
+      yield* Scope.close(first, Exit.void)
+      assert.deepStrictEqual((yield* workspace.current).online, ['mem_blake'])
+      yield* Scope.close(second, Exit.void)
+      assert.deepStrictEqual((yield* workspace.current).online, [])
     }).pipe(Effect.provide(workspaceLayer())))
 })

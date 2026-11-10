@@ -13,7 +13,7 @@ import { textarea } from '@/ui/textarea'
 
 import { requireMember } from '../auth'
 import { MAX_MESSAGE, Member, dayLabel, firstName, formatTime, inChannel, isMemberOf } from '../domain'
-import { Workspace, type WorkspaceState } from '../store'
+import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { MAX_DM_PEOPLE } from '../workspace'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, optionRow, pageRoot, slack } from '../view/design'
@@ -41,6 +41,7 @@ export const Model = S.Struct({
   dms: S.Array(DmRow),
   nav: Nav,
   switcher: Switcher,
+  isConnected: S.Boolean,
   now: S.Number,
   /** "Find a DM". */
   filter: S.String,
@@ -166,7 +167,7 @@ export const existingOf = (model: Model): DmRow | undefined => {
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; dms: ReadonlyArray<DmRow>; nav: Nav; now: number; to: ReadonlyArray<string> }>
 
 export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({
-  model: { ...flags, switcher: initSwitcher(), filter: '', toQuery: '', toActive: 0, draft: '', isSending: false, notice: null },
+  model: { ...flags, switcher: initSwitcher(), isConnected: false, filter: '', toQuery: '', toActive: 0, draft: '', isSending: false, notice: null },
 })
 
 // UPDATE
@@ -227,7 +228,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       CompletedChange: () => ({ model }),
       CompletedBrowserAction: () => ({ model }),
       // Slack puts you in the To field (or the message, if someone is in it already).
-      ChangedConnection: ({ isConnected }) => (isConnected ? { model, commands: [FocusElement({ selector: model.to.length === 0 ? '#to-input' : '#dm-draft' })] } : { model }),
+      ChangedConnection: ({ isConnected }) => (isConnected ? { model: { ...model, isConnected }, commands: [FocusElement({ selector: model.to.length === 0 ? '#to-input' : '#dm-draft' })] } : { model: { ...model, isConnected } }),
     }),
   )
 
@@ -247,6 +248,10 @@ const sameDm = (a: DmRow, b: DmRow) =>
 const sameSlice = (a: Slice, b: Slice) => a.me === b.me && a.members === b.members && a.dms.length === b.dms.length && a.dms.every((row, index) => sameDm(row, b.dms[index] as DmRow)) && sameNav(a.nav, b.nav)
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
+  presence: entry(
+    { memberId: S.String, isConnected: S.Boolean },
+    { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
   dms: entry(
     { memberId: S.String },
     {

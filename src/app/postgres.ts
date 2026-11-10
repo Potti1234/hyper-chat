@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
 import { PgClient } from '@effect/sql-pg'
-import { Clock, Effect, Layer, Queue, Redacted, Schema as S, type Scope, Semaphore, SubscriptionRef } from 'effect'
+import { Clock, Effect, Layer, Queue, Redacted, Schedule, Schema as S, type Scope, Semaphore, SubscriptionRef } from 'effect'
 import { SqlClient, SqlError } from 'effect/sql'
 
 import { Channel, Member, Message, Read, Saved } from './domain'
+import { type Presence, localConnections, sameIds } from './presence'
 import { type Backend, type Snapshot, Workspace, fromBackend, newId, snapshotOf } from './store'
 import type { WorkspaceData } from './workspace'
 
@@ -19,11 +20,17 @@ import type { WorkspaceData } from './workspace'
      decoded with their Schema on load. A field added later gets its default
      in `DEFAULTS`, so older rows still load.
    - Startup begins LISTEN before it reads, so no commit falls into a gap.
+   - Presence is a `presence` table of (process, member, heartbeat) rows,
+     announced on its own channel; rows whose process stopped beating for
+     `STALE_MS` no longer count.
    - Database failures are defects: the pages cannot recover from a lost
      database, and the errors stay in the log. */
 
 const CHANNEL = 'hyperchat_changes'
 const LOCK = 7411
+const PRESENCE_CHANNEL = 'hyperchat_presence'
+const HEARTBEAT = '20 seconds'
+const STALE_MS = 60_000
 
 const DEFAULT_URL = 'postgres://hyperchat:hyperchat-dev@localhost:5435/hyperchat'
 
@@ -69,6 +76,7 @@ const migrate = (sql: Sql) =>
       for (const table of TABLES) {
         yield* sql`CREATE TABLE IF NOT EXISTS ${sql(table)} (id TEXT PRIMARY KEY, data JSONB NOT NULL, seq BIGSERIAL)`
       }
+      yield* sql`CREATE TABLE IF NOT EXISTS presence (instance TEXT NOT NULL, member_id TEXT NOT NULL, seen_at BIGINT NOT NULL, PRIMARY KEY (instance, member_id))`
       yield* sql`CREATE TABLE IF NOT EXISTS passwords (member_id TEXT PRIMARY KEY, hash TEXT NOT NULL)`
     }),
   )
@@ -134,6 +142,45 @@ const catchUp = (sql: Sql, local: Snapshot) =>
     return Number(meta?.version ?? 1) === local.version ? local : yield* load(sql)
   })
 
+/** Who is online across every process, kept fresh by LISTEN and a heartbeat. */
+const postgresPresence = (sql: Sql, pg: PgClient.PgClient, instance: string): Effect.Effect<Presence, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const notifications = yield* pg.listen(PRESENCE_CHANNEL).pipe(Effect.orDie)
+    const ref = yield* SubscriptionRef.make<ReadonlyArray<string>>([])
+    const lock = yield* Semaphore.make(1)
+    const quietly = <A, E>(effect: Effect.Effect<A, E>) => Effect.ignore(effect, { log: 'Warn', message: 'presence' })
+    const refresh = Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis
+      const rows = yield* sql<{ member_id: string }>`SELECT DISTINCT member_id FROM presence WHERE seen_at > ${now - STALE_MS} ORDER BY member_id`
+      const ids = rows.map(row => row.member_id)
+      if (!sameIds(ids, yield* SubscriptionRef.get(ref))) yield* SubscriptionRef.set(ref, ids)
+    })
+    const publish = (memberIds: ReadonlyArray<string>) =>
+      lock.withPermits(1)(quietly(Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis
+        yield* sql.withTransaction(Effect.gen(function* () {
+          yield* sql`DELETE FROM presence WHERE instance = ${instance}`
+          for (const memberId of memberIds) yield* sql`INSERT INTO presence (instance, member_id, seen_at) VALUES (${instance}, ${memberId}, ${now})`
+        }))
+        yield* sql`SELECT pg_notify(${PRESENCE_CHANNEL}, ${instance})`
+        yield* refresh
+      })))
+    const connect = yield* localConnections(publish)
+    yield* refresh.pipe(Effect.orDie)
+    yield* Queue.takeAll(notifications).pipe(Effect.orDie, Effect.flatMap(() => quietly(refresh)), Effect.forever, Effect.forkScoped)
+    yield* Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis
+      yield* sql`UPDATE presence SET seen_at = ${now} WHERE instance = ${instance}`
+      yield* sql`DELETE FROM presence WHERE seen_at <= ${now - STALE_MS}`
+      yield* refresh
+    }).pipe(quietly, Effect.repeat(Schedule.spaced(HEARTBEAT)), Effect.forkScoped)
+    yield* Effect.addFinalizer(() => quietly(Effect.gen(function* () {
+      yield* sql`DELETE FROM presence WHERE instance = ${instance}`
+      yield* sql`SELECT pg_notify(${PRESENCE_CHANNEL}, ${instance})`
+    })))
+    return { online: SubscriptionRef.get(ref), changes: SubscriptionRef.changes(ref), connect }
+  })
+
 export const postgresBackend: Effect.Effect<Backend, never, SqlClient.SqlClient | PgClient.PgClient | Scope.Scope> =
   Effect.gen(function* () {
     const sql = (yield* SqlClient.SqlClient).withoutTransforms()
@@ -150,6 +197,7 @@ export const postgresBackend: Effect.Effect<Backend, never, SqlClient.SqlClient 
     const lock = yield* Semaphore.make(1)
     // Tells this process's own notifications from the others'.
     const instance = randomUUID()
+    const presence = yield* postgresPresence(sql, pg, instance)
 
     yield* Queue.takeAll(notifications).pipe(
       Effect.orDie,
@@ -169,6 +217,7 @@ export const postgresBackend: Effect.Effect<Backend, never, SqlClient.SqlClient 
     )
 
     return {
+      presence,
       current: SubscriptionRef.get(ref),
       changes: SubscriptionRef.changes(ref),
       run: op =>

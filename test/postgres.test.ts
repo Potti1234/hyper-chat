@@ -1,5 +1,5 @@
 import { assert, describe, it } from '@effect/vitest'
-import { Context, Effect, Layer, Stream } from 'effect'
+import { Context, Effect, Exit, Layer, Scope, Stream } from 'effect'
 import { SqlClient } from 'effect/sql'
 
 import * as Postgres from '@/app/postgres'
@@ -18,7 +18,7 @@ const url = process.env['TEST_DATABASE_URL']
 
 const reset = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
-  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, saves, passwords CASCADE`
+  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, saves, passwords, presence CASCADE`
 }).pipe(Effect.provide(Postgres.clientLayerFor(url ?? '')))
 
 /** One store, as one app process would build it. */
@@ -63,6 +63,12 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         assert.isTrue(restarted.saves.some(saved => saved.memberId === 'mem_casey' && saved.messageId === message.id && saved.state === 'done'))
         yield* one.deleteMessage(message.id, 'mem_avery')
         yield* two.changes.pipe(Stream.filter(state => !state.messages.some(item => item.id === message.id || item.id === reply.id)), Stream.runHead, Effect.timeout('5 seconds'))
+        // Presence: a page connected in one process shows as active in the other.
+        const page = yield* Scope.make()
+        yield* Scope.provide(one.connect('mem_casey'), page)
+        yield* two.changes.pipe(Stream.filter(state => state.online.includes('mem_casey')), Stream.runHead, Effect.timeout('5 seconds'))
+        yield* Scope.close(page, Exit.void)
+        yield* two.changes.pipe(Stream.filter(state => !state.online.includes('mem_casey')), Stream.runHead, Effect.timeout('5 seconds'))
         // A third process starting now reads the same workspace from the tables.
         const three = yield* store
         const fresh = yield* three.current

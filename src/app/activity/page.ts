@@ -12,7 +12,7 @@ import { button, buttonLink } from '@/ui/button'
 import { ActivityItem, activityOf, hrefOf } from '../activity'
 import { requireMember } from '../auth'
 import { ACTIVITY_READ, Member, Message as ChatMessage, dayLabel, firstName, formatTime, readAt } from '../domain'
-import { Workspace, type WorkspaceState } from '../store'
+import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
@@ -142,6 +142,10 @@ const sameItems = (a: ReadonlyArray<ActivityItem>, b: ReadonlyArray<ActivityItem
 const sameSlice = (a: Slice, b: Slice) => a.me === b.me && a.members === b.members && a.root === b.root && sameItems(a.items, b.items) && sameNav(a.nav, b.nav)
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
+  presence: entry(
+    { memberId: S.String, isConnected: S.Boolean },
+    { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
   activity: entry(
     { memberId: S.String, picked: S.NullOr(S.String) },
     {

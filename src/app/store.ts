@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
 
-import { Clock, Context, Effect, Layer, Semaphore, Stream, SubscriptionRef } from 'effect'
+import { Clock, Context, Effect, Layer, type Scope, Semaphore, Stream, SubscriptionRef } from 'effect'
 
 import type { Channel, Member, Message, Read, Saved, SavedState } from './domain'
 import { hashPassword, verifyPassword } from './password'
+import { type Presence, memoryPresence, sameIds } from './presence'
 import {
   type ChannelDetails,
   type DemoCounts,
@@ -57,10 +58,14 @@ export type WorkspaceState = Readonly<{
   messages: ReadonlyArray<Message>
   reads: ReadonlyArray<Read>
   saves: ReadonlyArray<Saved>
+  /** Who has a page open right now, by id (see presence.ts). */
+  online: ReadonlyArray<string>
 }>
 
+type SharedState = Omit<WorkspaceState, 'online'>
+
 /** The data at one version, and the state pages see (without passwords). */
-export type Snapshot = Readonly<{ version: number; data: WorkspaceData; state: WorkspaceState }>
+export type Snapshot = Readonly<{ version: number; data: WorkspaceData; state: SharedState }>
 
 export const snapshotOf = (version: number, data: WorkspaceData): Snapshot => ({
   version,
@@ -73,6 +78,7 @@ export type Backend = Readonly<{
   changes: Stream.Stream<Snapshot>
   /** Runs an operation atomically and makes its result the new state. */
   run: <A, E>(op: Op<A, E>) => Effect.Effect<A, E>
+  presence: Presence
 }>
 
 export type NewAccount = Readonly<{ name: string; email: string; password: string }>
@@ -82,6 +88,8 @@ export class Workspace extends Context.Service<
   {
     readonly current: Effect.Effect<WorkspaceState>
     readonly changes: Stream.Stream<WorkspaceState>
+    /** Shows the member as active until the scope closes. */
+    readonly connect: (memberId: string) => Effect.Effect<void, never, Scope.Scope>
     readonly member: (id: string) => Effect.Effect<Member | undefined>
     /** The member with this email and password. */
     readonly authenticate: (email: string, password: string) => Effect.Effect<Member | undefined>
@@ -91,13 +99,13 @@ export class Workspace extends Context.Service<
     readonly updateProfile: (memberId: string, input: ProfileInput) => Effect.Effect<Member, InvalidChange>
     readonly setStatus: (memberId: string, input: Readonly<{ emoji: string; text: string; until: number }>) => Effect.Effect<void, InvalidChange>
     readonly setPaused: (memberId: string, until: number) => Effect.Effect<void>
-    /** The direct message with these people, started if there is none. */
     readonly createChannel: (input: NewChannelInput, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly joinChannel: (channelId: string, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly leaveChannel: (channelId: string, actorId: string) => Effect.Effect<void, InvalidChange>
     readonly addToChannel: (channelId: string, memberIds: ReadonlyArray<string>, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly updateChannel: (channelId: string, details: ChannelDetails, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly setArchived: (channelId: string, isArchived: boolean, actorId: string) => Effect.Effect<void, InvalidChange>
+    /** The direct message with these people, started if there is none. */
     readonly openConversation: (memberIds: ReadonlyArray<string>, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly postMessage: (channelId: string, text: string, actorId: string, options?: PostOptions) => Effect.Effect<Message, InvalidChange>
     readonly markRead: (channelId: string, memberId: string) => Effect.Effect<void>
@@ -117,8 +125,9 @@ export class Workspace extends Context.Service<
 >()('hyperchat/Workspace') {}
 
 export const fromBackend = (backend: Backend): Workspace['Service'] => ({
-  current: Effect.map(backend.current, snapshot => snapshot.state),
-  changes: Stream.map(backend.changes, snapshot => snapshot.state),
+  current: Effect.zipWith(backend.current, backend.presence.online, (snapshot, online) => ({ ...snapshot.state, online })),
+  changes: Stream.zipLatestWith(backend.changes, Stream.changesWith(backend.presence.changes, sameIds), (snapshot, online) => ({ ...snapshot.state, online })),
+  connect: backend.presence.connect,
   member: id => Effect.map(backend.current, ({ data }) => data.members.find(member => member.id === id)),
   authenticate: (email, password) =>
     Effect.gen(function* () {
@@ -167,7 +176,9 @@ export const memoryBackend = (initial: WorkspaceData): Effect.Effect<Backend> =>
   Effect.gen(function* () {
     const ref = yield* SubscriptionRef.make(snapshotOf(1, initial))
     const lock = yield* Semaphore.make(1)
+    const presence = yield* memoryPresence
     return {
+      presence,
       current: SubscriptionRef.get(ref),
       changes: SubscriptionRef.changes(ref),
       run: op =>
@@ -186,3 +197,8 @@ export const memoryBackend = (initial: WorkspaceData): Effect.Effect<Backend> =>
 /** The workspace in this process's memory, starting from `initial`. */
 export const memoryLayer = (initial: Effect.Effect<WorkspaceData>) =>
   Layer.effect(Workspace, Effect.flatMap(initial, memoryBackend).pipe(Effect.map(fromBackend)))
+
+/** For a page's Subscriptions: shows the member as active while the page is
+ *  connected (it never emits). */
+export const presenceWhile = (memberId: string, isConnected: boolean): Stream.Stream<never, never, Workspace> =>
+  isConnected ? Stream.fromEffect(Effect.scoped(Workspace.use(workspace => Effect.andThen(workspace.connect(memberId), Effect.never)))) : Stream.empty

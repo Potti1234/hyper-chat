@@ -14,7 +14,8 @@ import { requireMember } from '../auth'
 import { Member, handleOf } from '../domain'
 import { STATUS_CHOICES, STATUS_PRESETS, isEmoji } from '../emoji'
 import { CLEAR_AFTER, CLEAR_AFTER_LABELS, MAX_NAME, MAX_PRONOUNS, MAX_STATUS, MAX_TITLE, PAUSE_FOR, TIME_ZONES, clearAt, isClearAfter, isPaused, isTimeZone, localTime, statusOf, timeZoneLabel, timeZoneOf, untilLabel } from '../profile'
-import { Workspace, type WorkspaceState } from '../store'
+import { sameIds } from '../presence'
+import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
@@ -36,8 +37,10 @@ type StatusForm = typeof StatusForm.Type
 export const Model = S.Struct({
   me: Member,
   members: S.Array(Member),
+  online: S.Array(S.String),
   nav: Nav,
   switcher: Switcher,
+  isConnected: S.Boolean,
   now: S.Number,
   filter: S.String,
   personId: S.NullOr(S.String),
@@ -71,8 +74,9 @@ export const Message = defineMessageUnion({
   ClickedPause: { minutes: S.Number },
   ClickedResume: {},
   GotSwitcher: { event: SwitcherEvent },
+  ChangedConnection: { isConnected: S.Boolean },
   ClickedToggleTheme: {},
-  GotPeople: { members: S.Array(Member), nav: Nav, me: Member, now: S.Number },
+  GotPeople: { members: S.Array(Member), online: S.Array(S.String), nav: Nav, me: Member, now: S.Number },
   CompletedProfile: {},
   CompletedStatus: {},
   CompletedChange: {},
@@ -152,12 +156,12 @@ const statusFormOf = (me: Member, now: number): StatusForm => {
 
 // INIT
 
-export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; nav: Nav; now: number; personId: string | null }>
+export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; online: ReadonlyArray<string>; nav: Nav; now: number; personId: string | null }>
 
 export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({
   model: {
     ...flags,
-    switcher: initSwitcher(),
+    switcher: initSwitcher(), isConnected: false,
     filter: '',
     edit: Dialog.init({ id: 'edit-profile' }),
     profile: profileFormOf(flags.me),
@@ -225,6 +229,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ClickedPause: ({ minutes }) => (PAUSE_FOR.some(([choice]) => choice === minutes) ? { model, commands: [SetPaused({ memberId: model.me.id, minutes })] } : { model }),
       ClickedResume: () => (isPaused(model.me, model.now) ? { model, commands: [SetPaused({ memberId: model.me.id, minutes: 0 })] } : { model }),
       GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
+      ChangedConnection: ({ isConnected }) => ({ model: { ...model, isConnected } }),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       GotPeople: data => ({ model: { ...model, ...data } }),
       CompletedProfile: () => withEdit({ ...model, profile: { ...model.profile, isSaving: false } }, Dialog.close(model.edit)),
@@ -236,16 +241,20 @@ export const update = (model: Model, message: Message): UpdateReturn =>
 
 // SUBSCRIPTION
 
-type Slice = Readonly<{ members: ReadonlyArray<Member>; nav: Nav; me: Member | null }>
+type Slice = Readonly<{ members: ReadonlyArray<Member>; online: ReadonlyArray<string>; nav: Nav; me: Member | null }>
 
 const sliceOf = (state: WorkspaceState, memberId: string): Slice => {
   const me = state.members.find(member => member.id === memberId) ?? null
-  return { members: state.members, nav: me === null ? emptyNav : navOf(state, me), me }
+  return { members: state.members, online: state.online, nav: me === null ? emptyNav : navOf(state, me), me }
 }
 
-const sameSlice = (a: Slice, b: Slice) => a.me === b.me && a.members === b.members && sameNav(a.nav, b.nav)
+const sameSlice = (a: Slice, b: Slice) => a.me === b.me && a.members === b.members && sameIds(a.online, b.online) && sameNav(a.nav, b.nav)
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
+  presence: entry(
+    { memberId: S.String, isConnected: S.Boolean },
+    { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
   people: entry(
     { memberId: S.String },
     {
@@ -280,13 +289,19 @@ const statusLine = (member: Member, now: number, h: HtmlBuilder<Message>): Reado
       ] }, h)]
 }
 
+const presenceOf = (model: Model, person: Member, h: HtmlBuilder<Message>): Html => {
+  const isActive = model.online.includes(person.id)
+  return box({ as: 'span', class: isActive ? slack.presenceOn : slack.presenceOff, attributes: [h.AriaLabel(isActive ? 'Active' : 'Away'), h.DataAttribute('presence', isActive ? 'active' : 'away')] }, h)
+}
+
 const personCard = (model: Model, person: Member, h: HtmlBuilder<Message>): Html => {
   const status = statusOf(person, model.now)
   return box({ as: 'li', children: [
       box({ as: 'a', class: slack.personCard, attributes: [h.Href(`/people/${person.id}`), h.DataAttribute('person', person.id), ...(person.id === model.personId ? [h.AriaCurrent('page')] : [])], children: [
           avatar(person, h, 'xl', 'w-full h-auto aspect-square text-5xl'),
           box({ class: 'flex min-w-0 flex-col gap-0.5 p-3', children: [
-              box({ as: 'p', class: 'flex items-center gap-1 text-[15px] font-bold', children: [
+              box({ as: 'p', class: 'flex items-center gap-1.5 text-[15px] font-bold', children: [
+                  presenceOf(model, person, h),
                   box({ as: 'span', class: 'min-w-0 truncate', children: [person.id === model.me.id ? `${person.name} (you)` : person.name] }, h),
                   ...(status === undefined ? [] : [box({ as: 'span', attributes: [h.Title(status.text)], children: [status.emoji] }, h)]),
                 ] }, h),
@@ -359,6 +374,7 @@ const profileView = (model: Model, h: HtmlBuilder<Message>): Html => {
           box({ class: 'flex flex-col gap-1', children: [
               box({ as: 'h3', class: 'text-[22px] font-black', attributes: [h.Id('profile-name')], children: [person.name, ...(person.pronouns === undefined || person.pronouns === '' ? [] : [box({ as: 'span', class: 'ml-2 text-[15px] font-normal text-muted-foreground', children: [person.pronouns] }, h)])] }, h),
               ...(person.title === '' ? [] : [box({ as: 'p', class: 'text-[15px]', attributes: [h.Id('profile-title')], children: [person.title] }, h)]),
+              box({ as: 'p', class: 'flex items-center gap-1.5 text-[13px] text-muted-foreground', attributes: [h.Id('profile-presence')], children: [presenceOf(model, person, h), model.online.includes(person.id) ? 'Active' : 'Away'] }, h),
               ...statusLine(person, model.now, h),
               ...(isPaused(person, model.now) ? [box({ as: 'p', class: 'flex items-center gap-1.5 text-[13px] text-muted-foreground', children: [Icon.icon('bell-off', { class: 'size-3.5' }, h), 'Notifications paused'] }, h)] : []),
             ] }, h),
@@ -447,9 +463,9 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
       box({ class: slack.frame, children: [
           topBar({}, h),
           box({ as: 'main', class: slack.main, children: [
-              region(h, { id: 'people', deps: [model.members, model.me.id, model.filter, model.personId, model.now], render: () => directoryView(model, h) }),
+              region(h, { id: 'people', deps: [model.members, model.me.id, model.filter, model.personId, model.now, model.online], render: () => directoryView(model, h) }),
             ] }, h),
-          ...(model.personId === null ? [] : [region(h, { id: 'profile', deps: [model.members, model.me, model.personId, model.now, model.nav.dms], render: () => profileView(model, h) })]),
+          ...(model.personId === null ? [] : [region(h, { id: 'profile', deps: [model.members, model.me, model.personId, model.now, model.nav.dms, model.online], render: () => profileView(model, h) })]),
         ] }, h),
       region(h, { id: 'profile-dialogs', deps: [model.edit, model.profile, model.status, model.statusForm, model.notice], render: () => box({ attributes: [h.Id('profile-dialogs')], children: [editDialog(model, h), statusDialog(model, h)] }, h) }),
     ] }, h),
@@ -466,9 +482,10 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
       const me = yield* requireMember(request)
       const state = yield* Workspace.use(workspace => workspace.current)
       const now = yield* Clock.currentTimeMillis
-      return { me, members: state.members, nav: navOf(state, me), now, personId: request.params['person'] ?? null }
+      return { me, members: state.members, online: state.online, nav: navOf(state, me), now, personId: request.params['person'] ?? null }
     }),
   init,
+  onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   update,
   view,
   subscriptions,

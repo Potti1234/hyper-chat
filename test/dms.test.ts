@@ -47,7 +47,7 @@ describe('direct messages', () => {
       const state = yield* Effect.flatMap(Workspace, workspace => workspace.current)
       const me = state.members.find(member => member.id === 'mem_avery')!
       const nav = navOf(state, me)
-      const model: Model = { me, members: state.members, dms: dmsOf(state, me, nav), nav, now: 0, filter: '', to: [], toQuery: 'bla', toActive: 0, draft: '', isSending: false, notice: null, switcher: initSwitcher() }
+      const model: Model = { me, members: state.members, dms: dmsOf(state, me, nav), nav, now: 0, filter: '', to: [], toQuery: 'bla', toActive: 0, draft: '', isSending: false, notice: null, switcher: initSwitcher(), isConnected: false }
       assert.deepStrictEqual(suggestionsOf(model).map(member => member.id), ['mem_blake'])
       const picked = update(model, { _tag: 'PressedKey', key: 'Enter', targetId: 'to-input' }).model
       assert.deepStrictEqual(picked.to, ['mem_blake'])
