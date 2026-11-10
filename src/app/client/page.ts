@@ -22,7 +22,7 @@ import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { sameIds } from '../presence'
-import { typingIn } from '../typing'
+import { threadTypingKey, typingIn } from '../typing'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { formatBar } from '../view/composer'
 import { choice } from '../view/choice'
@@ -85,6 +85,8 @@ export const Model = S.Struct({
   uploading: S.Number,
   /** Who else is typing here, by id. */
   typing: S.Array(S.String),
+  /** Who else is typing a reply in the open thread. */
+  threadTyping: S.Array(S.String),
   isConnected: S.Boolean,
   isSending: S.Boolean,
   notice: S.NullOr(S.String),
@@ -94,7 +96,7 @@ export const Model = S.Struct({
   /** The emoji picker or a message's menu, anchored to its button. */
   overlay: S.NullOr(S.Struct({ kind: S.Literals(['emoji', 'actions']), messageId: S.String, where: Where, anchor: S.String })),
   /** The open thread pane and its composer. */
-  thread: S.NullOr(S.Struct({ id: S.String, draft: S.String, alsoSend: S.Boolean, isSending: S.Boolean })),
+  thread: S.NullOr(S.Struct({ id: S.String, draft: S.String, alsoSend: S.Boolean, isSending: S.Boolean, uploads: S.Array(Attachment), uploading: S.Number })),
   emojiQuery: S.String,
   /** The message the delete confirmation is for. */
   deleting: S.NullOr(S.String),
@@ -121,10 +123,13 @@ const placeholderOf = (model: Model) =>
 export const Message = defineMessageUnion({
   ChangedDraft: { text: S.String },
   ChoseFiles: { files: S.Array(FoldkitFile.File) },
-  StoredFile: { file: Attachment },
-  RejectedFile: { reason: S.String },
+  ChoseReplyFiles: { files: S.Array(FoldkitFile.File) },
+  StoredFile: { file: Attachment, threadId: S.NullOr(S.String) },
+  RejectedFile: { reason: S.String, threadId: S.NullOr(S.String) },
   ClickedRemoveUpload: { id: S.String },
+  ClickedRemoveReplyUpload: { id: S.String },
   GotTyping: { memberIds: S.Array(S.String) },
+  GotThreadTyping: { memberIds: S.Array(S.String) },
   SubmittedDraft: {},
   PressedEnter: { targetId: S.String },
   GotSwitcher: { event: SwitcherEvent },
@@ -190,6 +195,7 @@ export type Message = typeof Message.Type
 export const ClientMessage = S.Union([
   Message.SubmittedDraft,
   Message.ClickedRemoveUpload,
+  Message.ClickedRemoveReplyUpload,
   S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme,
   Message.ClickedToggleSection,
   Message.ClickedDismissNotice,
@@ -232,12 +238,12 @@ export type ClientMessage = typeof ClientMessage.Type
 // COMMAND
 
 export const StoreFile = Command.define('StoreFile', {
-  args: { file: FoldkitFile.File, uploaderId: S.String },
+  args: { file: FoldkitFile.File, uploaderId: S.String, threadId: S.NullOr(S.String) },
   messages: [Message.StoredFile, Message.RejectedFile],
-  execute: ({ file, uploaderId }) =>
+  execute: ({ file, uploaderId, threadId }) =>
     Files.use(files => files.put(file, uploaderId)).pipe(
-      Effect.map(stored => Message.StoredFile({ file: stored })),
-      Effect.catchTag('FileRejected', ({ reason }) => Effect.succeed(Message.RejectedFile({ reason }))),
+      Effect.map(stored => Message.StoredFile({ file: stored, threadId })),
+      Effect.catchTag('FileRejected', ({ reason }) => Effect.succeed(Message.RejectedFile({ reason, threadId }))),
     ),
 })
 
@@ -258,10 +264,10 @@ export const SendMessage = Command.define('SendMessage', {
 })
 
 export const SendReply = Command.define('SendReply', {
-  args: { channelId: S.String, threadId: S.String, text: S.String, alsoInChannel: S.Boolean, actorId: S.String },
+  args: { channelId: S.String, threadId: S.String, text: S.String, files: S.Array(Attachment), alsoInChannel: S.Boolean, actorId: S.String },
   messages: [Message.SucceededReply, Message.FailedChange],
-  execute: ({ channelId, threadId, text, alsoInChannel, actorId }) =>
-    Workspace.use(workspace => workspace.postMessage(channelId, text, actorId, { threadId, alsoInChannel })).pipe(
+  execute: ({ channelId, threadId, text, files, alsoInChannel, actorId }) =>
+    Workspace.use(workspace => Effect.tap(workspace.postMessage(channelId, text, actorId, { threadId, alsoInChannel, files }), () => workspace.setTyping(actorId, threadTypingKey(channelId, threadId), false))).pipe(
       Effect.as(Message.SucceededReply()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
@@ -466,12 +472,13 @@ export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Messag
   model: {
     ...flags,
     switcher: initSwitcher(),
-    thread: threadId === null ? null : { id: threadId, draft: '', alsoSend: false, isSending: false },
+    thread: threadId === null ? null : { id: threadId, draft: '', alsoSend: false, isSending: false, uploads: [], uploading: 0 },
     markedUpTo: flags.readMarker,
     draft: '',
     uploads: [],
     uploading: 0,
     typing: [],
+    threadTyping: [],
     isConnected: false,
     isSending: false,
     notice: null,
@@ -519,14 +526,49 @@ const changeDraft = (model: Model, text: string): UpdateReturn => {
   return { model: next, commands: [SignalTyping({ channelId: model.channelId, memberId: model.me.id, isTyping })] }
 }
 
+/** The reply draft, and telling the thread's readers whether you are typing. */
+const changeReplyDraft = (model: Model, text: string): UpdateReturn => {
+  const thread = model.thread
+  if (thread === null) return { model }
+  const draft = text.slice(0, MAX_MESSAGE + 100)
+  const next = { ...model, thread: { ...thread, draft } }
+  const isTyping = draft.trim() !== ''
+  if (!canWrite(model) || (!isTyping && thread.draft.trim() === '')) return { model: next }
+  return { model: next, commands: [SignalTyping({ channelId: threadTypingKey(model.channelId, thread.id), memberId: model.me.id, isTyping })] }
+}
+
+/** Why these files can't join the pending ones, if they can't. */
+const fileProblem = (model: Model, pending: number, files: ReadonlyArray<File>): string | null => {
+  if (!canWrite(model)) return 'Join this channel to share files in it.'
+  if (pending + files.length > MAX_FILES) return `Share at most ${MAX_FILES} files at once.`
+  const tooLarge = files.find(file => file.size > MAX_FILE_BYTES)
+  return tooLarge === undefined ? null : `${tooLarge.name} is larger than 10 MB.`
+}
+
 /** Stores chosen or dropped files for the next message, one Command each. */
 const chooseFiles = (model: Model, files: ReadonlyArray<File>): UpdateReturn => {
   if (files.length === 0) return { model }
-  if (!canWrite(model)) return { model: { ...model, notice: 'Join this channel to share files in it.' } }
-  if (model.uploads.length + model.uploading + files.length > MAX_FILES) return { model: { ...model, notice: `Share at most ${MAX_FILES} files at once.` } }
-  const tooLarge = files.find(file => file.size > MAX_FILE_BYTES)
-  if (tooLarge !== undefined) return { model: { ...model, notice: `${tooLarge.name} is larger than 10 MB.` } }
-  return { model: { ...model, uploading: model.uploading + files.length, notice: null }, commands: files.map(file => StoreFile({ file, uploaderId: model.me.id })) }
+  const problem = fileProblem(model, model.uploads.length + model.uploading, files)
+  if (problem !== null) return { model: { ...model, notice: problem } }
+  return { model: { ...model, uploading: model.uploading + files.length, notice: null }, commands: files.map(file => StoreFile({ file, uploaderId: model.me.id, threadId: null })) }
+}
+
+/** The same for the open thread's reply. */
+const chooseReplyFiles = (model: Model, files: ReadonlyArray<File>): UpdateReturn => {
+  const thread = model.thread
+  if (files.length === 0 || thread === null) return { model }
+  const problem = fileProblem(model, thread.uploads.length + thread.uploading, files)
+  if (problem !== null) return { model: { ...model, notice: problem } }
+  return { model: { ...model, thread: { ...thread, uploading: thread.uploading + files.length }, notice: null }, commands: files.map(file => StoreFile({ file, uploaderId: model.me.id, threadId: thread.id })) }
+}
+
+/** A stored (or refused) file lands in the composer it was chosen for. */
+const landFile = (model: Model, threadId: string | null, file: Attachment | null, reason: string | null): Model => {
+  const notice = reason ?? model.notice
+  if (threadId === null) return { ...model, notice, uploading: Math.max(0, model.uploading - 1), uploads: file === null ? model.uploads : [...model.uploads, file] }
+  const thread = model.thread
+  if (thread === null || thread.id !== threadId) return { ...model, notice }
+  return { ...model, notice, thread: { ...thread, uploading: Math.max(0, thread.uploading - 1), uploads: file === null ? thread.uploads : [...thread.uploads, file] } }
 }
 
 /** A message with its thread: replies are kept to the thread they belong to. */
@@ -541,7 +583,7 @@ export const repliesOf = (messages: ReadonlyArray<ChatMessage>, threadId: string
 const openThread = (model: Model, messageId: string): UpdateReturn => {
   const root = threadRoot(model, messageId)
   if (root === undefined) return { model }
-  const thread = model.thread?.id === root.id ? model.thread : { id: root.id, draft: '', alsoSend: false, isSending: false }
+  const thread = model.thread?.id === root.id ? model.thread : { id: root.id, draft: '', alsoSend: false, isSending: false, uploads: [], uploading: 0 }
   return { model: withFocus({ ...model, overlay: null, thread }, '#thread-composer') }
 }
 
@@ -549,11 +591,11 @@ const sendReply = (model: Model): UpdateReturn => {
   const thread = model.thread
   if (thread === null || thread.isSending) return { model }
   const text = thread.draft.trim()
-  if (text === '') return { model }
+  if ((text === '' && thread.uploads.length === 0) || thread.uploading > 0) return { model }
   if (!canWrite(model)) return { model: { ...model, notice: 'Join this channel to reply.' } }
   if (text.length > MAX_MESSAGE) return { model: { ...model, notice: `Keep messages under ${MAX_MESSAGE} characters.` } }
   if (threadRoot(model, thread.id) === undefined) return { model: { ...model, thread: null, notice: 'That thread was deleted.' } }
-  return { model: { ...model, thread: { ...thread, isSending: true } }, commands: [SendReply({ channelId: model.channelId, threadId: thread.id, text, alsoInChannel: thread.alsoSend, actorId: model.me.id })] }
+  return { model: { ...model, thread: { ...thread, isSending: true } }, commands: [SendReply({ channelId: model.channelId, threadId: thread.id, text, files: thread.uploads, alsoInChannel: thread.alsoSend, actorId: model.me.id })] }
 }
 
 const composerOf = (where: Where) => (where === 'thread' ? '#thread-composer' : '#composer')
@@ -657,10 +699,13 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
     M.tagsExhaustive({
       ChangedDraft: ({ text }) => changeDraft(model, text),
       GotTyping: ({ memberIds }) => ({ model: sameIds(memberIds, model.typing) ? model : { ...model, typing: memberIds } }),
+      GotThreadTyping: ({ memberIds }) => ({ model: sameIds(memberIds, model.threadTyping) ? model : { ...model, threadTyping: memberIds } }),
       ChoseFiles: ({ files }) => chooseFiles(model, files),
-      StoredFile: ({ file }) => ({ model: { ...model, uploading: Math.max(0, model.uploading - 1), uploads: [...model.uploads, file] } }),
-      RejectedFile: ({ reason }) => ({ model: { ...model, uploading: Math.max(0, model.uploading - 1), notice: reason } }),
+      ChoseReplyFiles: ({ files }) => chooseReplyFiles(model, files),
+      StoredFile: ({ file, threadId }) => ({ model: landFile(model, threadId, file, null) }),
+      RejectedFile: ({ reason, threadId }) => ({ model: landFile(model, threadId, null, reason) }),
       ClickedRemoveUpload: ({ id }) => ({ model: { ...model, uploads: model.uploads.filter(file => file.id !== id) } }),
+      ClickedRemoveReplyUpload: ({ id }) => (model.thread === null ? { model } : { model: { ...model, thread: { ...model.thread, uploads: model.thread.uploads.filter(file => file.id !== id) } } }),
       SubmittedDraft: () => send(model),
       PressedEnter: ({ targetId }) =>
         targetId === 'detail-field' ? saveField(model) : targetId === 'composer' ? send(model) : targetId === 'thread-composer' ? sendReply(model) : targetId === 'edit-composer' ? saveEdit(model) : { model },
@@ -716,10 +761,10 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       ClickedEdit: ({ messageId, where }) => startEdit(model, messageId, where),
       ClickedReplyInThread: ({ messageId }) => openThread(model, messageId),
       ClickedCloseThread: () => ({ model: withFocus({ ...model, thread: null, editing: model.editing?.where === 'thread' ? null : model.editing, overlay: model.overlay?.where === 'thread' ? null : model.overlay }, '#composer') }),
-      ChangedThreadDraft: ({ text }) => (model.thread === null ? { model } : { model: { ...model, thread: { ...model.thread, draft: text.slice(0, MAX_MESSAGE + 100) } } }),
+      ChangedThreadDraft: ({ text }) => changeReplyDraft(model, text),
       SubmittedThreadDraft: () => sendReply(model),
       ToggledAlsoSend: ({ isChecked }) => (model.thread === null ? { model } : { model: { ...model, thread: { ...model.thread, alsoSend: isChecked } } }),
-      SucceededReply: () => ({ model: withFocus({ ...model, thread: model.thread === null ? null : { ...model.thread, draft: '', alsoSend: false, isSending: false } }, '#thread-composer') }),
+      SucceededReply: () => ({ model: withFocus({ ...model, thread: model.thread === null ? null : { ...model.thread, draft: '', alsoSend: false, isSending: false, uploads: [] } }, '#thread-composer') }),
       ChangedEdit: ({ text }) => (model.editing === null ? { model } : { model: { ...model, editing: { ...model.editing, text: text.slice(0, MAX_MESSAGE + 100) } } }),
       SubmittedEdit: () => saveEdit(model),
       ClickedCancelEdit: () => ({ model: withFocus({ ...model, editing: null }, composerOf(model.editing?.where ?? 'channel')) }),
@@ -865,6 +910,20 @@ export const subscriptions = Subscription.make<Model, Message, Workspace>()(entr
           Stream.changesWith(sameIds),
           Stream.map(memberIds => Message.GotTyping({ memberIds })),
         )))),
+    },
+  ),
+  threadTyping: entry(
+    { key: S.String, memberId: S.String },
+    {
+      modelToDependencies: model => ({ key: model.thread === null ? '' : threadTypingKey(model.channelId, model.thread.id), memberId: model.me.id }),
+      dependenciesToStream: ({ key, memberId }) =>
+        key === ''
+          ? Stream.make(Message.GotThreadTyping({ memberIds: [] }))
+          : Stream.unwrap(Workspace.use(workspace => Effect.succeed(workspace.typing.pipe(
+              Stream.map(typists => typingIn(typists, key, memberId)),
+              Stream.changesWith(sameIds),
+              Stream.map(memberIds => Message.GotThreadTyping({ memberIds })),
+            )))),
     },
   ),
   channel: entry(
@@ -1345,17 +1404,20 @@ const threadView = (model: Model, h: HtmlBuilder<Message>): Html => {
               ...rows.flatMap(row => (row._tag === 'message' ? [messageRegion(model, row.message, row.isFirst, 'thread', null, h)] : [])),
             ] }, h),
           canWrite(model)
-            ? box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedThreadDraft())], children: [
+            ? box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedThreadDraft()), h.AllowDrop(), h.OnDropFiles(files => Message.ChoseReplyFiles({ files }))], children: [
                 formatBar(h),
+                ...uploadChips({ uploads: thread.uploads, uploading: thread.uploading, onRemove: id => Message.ClickedRemoveReplyUpload({ id }) }, h),
                 textarea({ id: 'thread-composer', value: thread.draft, rows: 1, placeholder: 'Reply…', onInput: text => Message.ChangedThreadDraft({ text }), ariaLabel: 'Reply in thread', resize: 'none', variant: 'slack-composer' }, h),
                 box({ class: 'flex items-center gap-1 px-2 pb-1.5', children: [
+                    fileButton({ id: 'attach-reply', ariaLabel: 'Attach files to the reply', title: 'Upload from your computer', isMultiple: true, size: 'icon-md', isDisabled: thread.isSending, onFiles: files => Message.ChoseReplyFiles({ files }), children: [Icon.icon('plus', {}, h)] }, h),
                     box({ class: 'flex-1 text-[13px]', children: [
                         checkbox({ id: 'also-send', isChecked: thread.alsoSend, onToggle: isChecked => Message.ToggledAlsoSend({ isChecked }), label: `Also send ${model.channel.kind === 'dm' ? 'as direct message' : `to ${where}`}` }, h),
                       ] }, h),
-                    button({ id: 'send-reply', variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send reply', title: 'Send reply', isDisabled: thread.draft.trim() === '' || thread.isSending, children: [Icon.icon('send', {}, h)] }, h),
+                    button({ id: 'send-reply', variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send reply', title: 'Send reply', isDisabled: (thread.draft.trim() === '' && thread.uploads.length === 0) || thread.uploading > 0 || thread.isSending, children: [Icon.icon('send', {}, h)] }, h),
                   ] }, h),
               ] }, h)
             : box({}, h),
+          ...(canWrite(model) ? [typingView(model, h, 'thread')] : []),
         ] }, h),
     ] }, h)
 }
@@ -1440,9 +1502,9 @@ export const typingText = (names: ReadonlyArray<string>): string => {
   return names.length === 2 ? `${first} and ${second} are typing…` : 'Several people are typing…'
 }
 
-const typingView = (model: Model, h: HtmlBuilder<Message>): Html => {
-  const names = model.typing.map(id => model.members.find(member => member.id === id)?.name ?? 'Someone')
-  return box({ class: '-mt-[19px] min-h-[19px] shrink-0 truncate px-5 text-[12px] leading-[18px] text-muted-foreground', attributes: [h.Id('typing'), h.AriaLive('polite')], children: names.length === 0 ? [] : [box({ as: 'strong', class: 'font-bold', attributes: [h.DataAttribute('typing-names', '')], children: [typingText(names)] }, h)] }, h)
+const typingView = (model: Model, h: HtmlBuilder<Message>, where: Where = 'channel'): Html => {
+  const names = (where === 'thread' ? model.threadTyping : model.typing).map(id => model.members.find(member => member.id === id)?.name ?? 'Someone')
+  return box({ class: '-mt-[19px] min-h-[19px] shrink-0 truncate px-5 text-[12px] leading-[18px] text-muted-foreground', attributes: [h.Id(where === 'thread' ? 'thread-typing' : 'typing'), h.AriaLive('polite')], children: names.length === 0 ? [] : [box({ as: 'strong', class: 'font-bold', attributes: [h.DataAttribute('typing-names', '')], children: [typingText(names)] }, h)] }, h)
 }
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
@@ -1463,7 +1525,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
               region(h, { id: 'composer-area', deps: [model.draft, model.uploads, model.uploading, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
               region(h, { id: 'typing', deps: [model.typing, model.members], render: () => typingView(model, h) }),
             ] }, h),
-          region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now, model.saved, model.me.timeZone, model.me.preferences], render: () => threadView(model, h) }),
+          region(h, { id: 'thread', deps: [model.thread, model.threadTyping, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now, model.saved, model.me.timeZone, model.me.preferences], render: () => threadView(model, h) }),
         ] }, h),
       region(h, {
         id: 'keys',

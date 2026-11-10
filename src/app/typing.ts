@@ -28,6 +28,9 @@ export const applyTyping = (typists: ReadonlyArray<Typist>, event: TypingEvent):
   return event.isTyping ? [...others, { memberId: event.memberId, channelId: event.channelId, until: event.at + TYPING_MS }] : others
 }
 
+/** Typing in a thread is announced under the conversation and thread ids. */
+export const threadTypingKey = (channelId: string, threadId: string): string => `${channelId}:${threadId}`
+
 /** Who is typing in a conversation, other than the viewer, by id. */
 export const typingIn = (typists: ReadonlyArray<Typist>, channelId: string, viewerId: string): ReadonlyArray<string> =>
   typists.filter(typist => typist.channelId === channelId && typist.memberId !== viewerId).map(typist => typist.memberId).sort()
