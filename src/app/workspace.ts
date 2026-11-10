@@ -75,7 +75,7 @@ const updateMember = (data: WorkspaceData, memberId: string, patch: Partial<Memb
   return (Object.keys(patch) as ReadonlyArray<keyof Member>).every(key => member[key] === next[key]) ? data : { ...data, members: replace(data.members, next) }
 }
 
-const clearMember = (data: WorkspaceData, memberId: string, key: 'status' | 'pausedUntil'): WorkspaceData => {
+const clearMember = (data: WorkspaceData, memberId: string, key: 'status' | 'pausedUntil' | 'muted'): WorkspaceData => {
   const member = data.members.find(candidate => candidate.id === memberId)
   if (member === undefined || member[key] === undefined) return data
   const { [key]: _cleared, ...rest } = member
@@ -133,6 +133,20 @@ export const setStatus =
     if (input.until !== 0 && input.until <= at) return invalid('That time has passed.')
     if (text === '' && input.emoji === '') return unchanged(undefined, clearMember(data, memberId, 'status'))
     return unchanged(undefined, updateMember(data, memberId, { status: { emoji: input.emoji === '' ? STATUS_EMOJI : input.emoji, text, until: input.until } }))
+  }
+
+/** Mutes or unmutes a conversation for one member (Slack's "Mute channel"). */
+export const setMuted =
+  (memberId: string, channelId: string, isMuted: boolean): Op<void, InvalidChange> =>
+  data => {
+    const member = data.members.find(candidate => candidate.id === memberId)
+    if (member === undefined) return invalid('Unknown member.')
+    const channel = data.channels.find(candidate => candidate.id === channelId)
+    if (channel === undefined || !canRead(channel, memberId) || !isMemberOf(channel, memberId)) return invalid('Join the conversation first.')
+    const before = member.muted ?? []
+    if (before.includes(channelId) === isMuted) return unchanged(undefined, data)
+    const after = isMuted ? [...before, channelId].sort() : before.filter(id => id !== channelId)
+    return unchanged(undefined, after.length === 0 ? clearMember(data, memberId, 'muted') : updateMember(data, memberId, { muted: after }))
   }
 
 /** Pauses notifications until then; 0 (or a moment past) resumes them. */

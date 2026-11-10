@@ -33,6 +33,8 @@ export const buttonVariants = cva(
         // The Slack frame (rail and sidebar) on its dark sidebar colours.
         sidebar: 'w-full justify-start font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
         'sidebar-unread': 'w-full justify-start font-bold text-sidebar-accent-foreground hover:bg-sidebar-accent',
+        // A muted conversation: dimmed, and not bold when it has news.
+        'sidebar-muted': 'w-full justify-start font-normal text-sidebar-foreground/45 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
         'sidebar-active': 'w-full justify-start font-medium bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary',
         // The top bar's "Search Northwind" field, a link to the search page.
         'top-search': 'w-full justify-start border border-white/25 bg-white/15 font-normal text-white/80 hover:bg-white/25 hover:text-white',

@@ -259,6 +259,24 @@ try {
   await avery.keyboard.press('Enter')
   check('a new message bolds the channel for someone elsewhere', await until(blake, () => [...document.querySelectorAll('#sidebar a')].some(link => link.textContent.includes('general') && getComputedStyle(link).fontWeight >= 700)))
 
+  // Muting: the channel greys out and stops being bold.
+  const generalRow = "#sidebar a[href='/client/ch_general']"
+  await visit(blake, '/client/ch_general')
+  await blake.click('#mute-channel')
+  check('the header mutes a channel', await until(blake, () => document.querySelector('#mute-channel')?.getAttribute('aria-pressed') === 'true' && document.querySelector('#mute-channel')?.getAttribute('aria-label') === 'Unmute channel'))
+  check('the sidebar marks it muted', await until(blake, row => document.querySelector(row)?.hasAttribute('data-muted') === true, generalRow))
+  await visit(blake, '/client/ch_random')
+  check('muting lasts across page loads', (await blake.locator(generalRow).getAttribute('data-muted')) !== null)
+  await avery.click('#composer')
+  await avery.keyboard.type(`Quiet ${Date.now()}`)
+  await avery.keyboard.press('Enter')
+  await settle(blake)
+  await blake.waitForTimeout(800)
+  check('a muted channel with news is not bold', await blake.locator(generalRow).evaluate(link => Number(getComputedStyle(link).fontWeight) < 700))
+  await visit(blake, '/client/ch_general')
+  await blake.click('#mute-channel')
+  check('it unmutes', await until(blake, row => document.querySelector('#mute-channel')?.getAttribute('aria-pressed') === 'false' && !document.querySelector(row)?.hasAttribute('data-muted'), generalRow))
+
   // Activity
   const activityCount = page => page.locator('#rail a[href="/activity"] [data-slot=badge]').innerText().then(Number, () => 0)
   await visit(avery, '/client/ch_random')

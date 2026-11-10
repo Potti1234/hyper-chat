@@ -57,7 +57,7 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Add people to channel | From details → Members | **done** |
 | Archive channel | Read-only, hidden from sidebar | Any member can archive (no admin roles yet) — **done** |
 | Star / favourite | Starred section at the top of the sidebar | **planned** |
-| Mute | Muted channels are greyed and never bold | **planned** |
+| Mute | Muted channels are greyed and never bold | **done**: the bell in a channel or DM header mutes it for you; it is greyed in the sidebar, not bold when there is news and left out of the Home dot, while mentions still show their count. Kept per person (`Member.muted`) |
 | Custom sidebar sections | Drag channels into own sections | **out of scope** (fixed sections) |
 | Slack Connect (other companies) | — | **out of scope** |
 

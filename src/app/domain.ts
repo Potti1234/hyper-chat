@@ -45,8 +45,12 @@ export const Member = S.Struct({
   /** Notifications paused until then (Slack's "Pause notifications"). */
   pausedUntil: S.optionalKey(S.Number),
   preferences: S.optionalKey(Preferences),
+  /** Conversations they muted: greyed in the sidebar and never bold. */
+  muted: S.optionalKey(S.Array(S.String)),
 })
 export type Member = typeof Member.Type
+
+export const isMuted = (member: Member, channelId: string): boolean => member.muted?.includes(channelId) === true
 
 /** Demo addresses use a reserved example domain. */
 export const EMAIL_DOMAIN = 'hyperchat.example'

@@ -7,7 +7,7 @@ import { button, buttonLink } from '@/ui/button'
 import { input } from '@/ui/input'
 
 import { activityOf, unseenCount } from '../activity'
-import { ACTIVITY_READ, type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, mentions, readAt } from '../domain'
+import { ACTIVITY_READ, type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, isMuted, mentions, readAt } from '../domain'
 import { isPaused } from '../profile'
 import type { WorkspaceState } from '../store'
 import { box, slack } from './design'
@@ -29,6 +29,8 @@ export const NavRow = S.Struct({
   partnerIds: S.Array(S.String),
   /** A one-to-one DM whose partner has a page open. */
   isOnline: S.Boolean,
+  /** Muted by you: greyed and never bold, though mentions still count. */
+  isMuted: S.Boolean,
 })
 export type NavRow = typeof NavRow.Type
 
@@ -51,6 +53,7 @@ const navRow = (state: WorkspaceState, channel: Channel, me: Member): NavRow => 
     mentions: channel.kind === 'dm' ? unread.length : unread.filter(message => mentions(message.text, me)).length,
     partnerIds,
     isOnline: partnerIds.length === 1 && state.online.includes(partnerIds[0] ?? ''),
+    isMuted: isMuted(me, channel.id),
   }
 }
 
@@ -68,11 +71,11 @@ export const navOf = (state: WorkspaceState, me: Member): Nav => {
 }
 
 const sameRow = (a: NavRow, b: NavRow) =>
-  a.id === b.id && a.label === b.label && a.kind === b.kind && a.isUnread === b.isUnread && a.mentions === b.mentions && a.partnerIds.join() === b.partnerIds.join() && a.isOnline === b.isOnline
+  a.id === b.id && a.label === b.label && a.kind === b.kind && a.isUnread === b.isUnread && a.mentions === b.mentions && a.partnerIds.join() === b.partnerIds.join() && a.isOnline === b.isOnline && a.isMuted === b.isMuted
 const sameRows = (a: ReadonlyArray<NavRow>, b: ReadonlyArray<NavRow>) => a.length === b.length && a.every((row, index) => sameRow(row, b[index] as NavRow))
 export const sameNav = (a: Nav, b: Nav): boolean => a.activity === b.activity && sameRows(a.channels, b.channels) && sameRows(a.dms, b.dms)
 
-export const hasUnread = (nav: Nav): boolean => [...nav.channels, ...nav.dms].some(row => row.isUnread)
+export const hasUnread = (nav: Nav): boolean => [...nav.channels, ...nav.dms].some(row => row.isUnread && !row.isMuted)
 
 // RAIL
 
@@ -161,7 +164,8 @@ const sidebarRow = <Msg>(row: NavRow, props: SidebarProps<Msg>, h: HtmlBuilder<M
   buttonLink(
     {
       href: `/client/${row.id}`,
-      variant: row.id === props.activeId ? 'sidebar-active' : row.isUnread ? 'sidebar-unread' : 'sidebar',
+      variant: row.id === props.activeId ? 'sidebar-active' : row.isMuted ? 'sidebar-muted' : row.isUnread ? 'sidebar-unread' : 'sidebar',
+      ...(row.isMuted ? { marker: ['muted', ''] as const } : {}),
       size: 'row',
       leadingIcon: rowIcon(row, props.members, h),
       children: [
