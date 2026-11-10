@@ -795,12 +795,12 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       },
       SucceededJoin: () => ({ model: withFocus({ ...model, isJoining: false }, '#composer') }),
       ClickedOpenDetails: ({ tab, field }) => {
-        if (model.channel === null || (model.channel.kind === 'dm' && tab !== 'pins')) return { model }
+        if (model.channel === null || (model.channel.kind === 'dm' && tab !== 'pins' && tab !== 'settings')) return { model }
         const opened = withDetails({ ...model, overlay: null, about: { ...closedAbout, tab } }, Dialog.open(model.details))
         return field === null ? opened : { ...opened, model: editField(opened.model, field) }
       },
       GotDetailsDialog: ({ message }) => withDetails(model, Dialog.update(model.details, message)),
-      ClickedDetailsTab: ({ tab }) => ({ model: { ...model, about: { ...model.about, tab, field: null, query: '' } } }),
+      ClickedDetailsTab: ({ tab }) => (model.channel?.kind === 'dm' && tab !== 'pins' && tab !== 'settings' ? { model } : { model: { ...model, about: { ...model.about, tab, field: null, query: '' } } }),
       ClickedEditField: ({ field }) => ({ model: editField(model, field) }),
       ChangedField: ({ text }) => (model.about.field === null ? { model } : { model: { ...model, about: { ...model.about, value: text.slice(0, fieldMax[model.about.field] + 20) } } }),
       SubmittedField: () => saveField(model),
@@ -1441,8 +1441,10 @@ const headerView = (model: Model, h: HtmlBuilder<Message>): Html => {
   const people = channel === null ? [] : channel.memberIds.map(id => model.members.find(member => member.id === id)).filter(member => member !== undefined)
   return box({ as: 'header', class: 'shrink-0 border-b', attributes: [h.Id('conversation-header')], children: [
       box({ class: 'flex min-h-[49px] items-center gap-2 px-4', children: [
-          box({ as: 'h1', class: 'flex min-w-0 items-center gap-1 text-[18px] font-black', children: channel === null || channel.kind === 'dm'
+          box({ as: 'h1', class: 'flex min-w-0 items-center gap-1 text-[18px] font-black', children: channel === null
               ? [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)]
+              : channel.kind === 'dm'
+              ? [button({ id: 'channel-title', variant: 'channel-title', size: 'sm', ariaLabel: `Conversation details for ${titleOf(model)}`, onClick: Message.ClickedOpenDetails({ tab: 'settings', field: null }), trailingIcon: Icon.icon('chevron-down', { class: 'size-4' }, h), children: [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)] }, h)]
               : [button({ id: 'channel-title', variant: 'channel-title', size: 'sm', ariaLabel: `Channel details for #${channel.name}`, onClick: Message.ClickedOpenDetails({ tab: 'about', field: null }), leadingIcon: Icon.icon(channel.kind === 'private' ? 'lock' : 'hash', { class: 'size-[18px]' }, h), trailingIcon: Icon.icon('chevron-down', { class: 'size-4' }, h), children: [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)] }, h)] }, h),
           ...(channel === null || !isMemberOf(channel, model.me.id) ? [] : [starButton(model, channel, h)]),
           ...(channel === null || channel.kind === 'dm'
