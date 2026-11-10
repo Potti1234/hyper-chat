@@ -7,7 +7,7 @@ import { chromium } from 'playwright'
    "also send to channel", a thread URL), unread channels, the Threads view,
    DMs, channel management (browse, create, join, topic, members, leave),
    Activity (mentions, filters, opening an item), Mark unread, Saved for
-   later (the Later page) and pins.
+   later (the Later page), pins and search.
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -32,7 +32,7 @@ const live = async (page, go) => {
   await go()
   await stream
   // Pages with key bindings are live once those are in; the others once the stream answered.
-  if (!/\/(channels|activity|later)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
+  if (!/\/(channels|activity|later|search)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
   else await page.waitForTimeout(300)
   await settle(page)
 }
@@ -310,6 +310,33 @@ try {
   check('outsiders cannot find private channels', (await blake.locator(`#channel-rows [data-channel="${secret}"]`).count()) === 0)
   await visit(blake, '/client/ch_eng')
   check('visitors see Join channel', await until(blake, () => document.querySelector('#join-channel') !== null || document.querySelector('#composer') !== null))
+
+  // Search: the top bar, results as you type, filters, live results.
+  await visit(avery, '/client/ch_general')
+  await live(avery, () => avery.click('#open-search'))
+  check('the top bar opens search', /\/search/.test(avery.url()))
+  check('the search field takes focus', await until(avery, () => document.activeElement?.id === 'search-input'))
+  await avery.keyboard.type('launch')
+  check('results come as you type', await until(avery, () => document.querySelectorAll('#search-hits [data-hit]').length > 0 && [...document.querySelectorAll('#search-hits [data-message-text]')].every(text => text.textContent.toLowerCase().includes('launch'))))
+  check('the address keeps the query', await until(avery, () => location.search === '?q=launch'))
+  await avery.click('[data-tab=channels]')
+  check('the Channels tab lists matching channels', await until(avery, () => document.querySelector('#search-hits [data-channel-hit=ch_launch]')?.textContent.includes('product-launch')))
+  await avery.click('[data-tab=messages]')
+  await avery.click('#from-me')
+  check('"From me" adds a from: filter', await until(avery, () => document.querySelector('#search-input')?.value === 'launch from:@avery' && document.querySelector('#clear-from') !== null))
+  await avery.click('#clear-from')
+  check('the chip clears it', await until(avery, () => document.querySelector('#search-input')?.value === 'launch'))
+  const needle = `needle${Date.now()}`
+  await avery.fill('#search-input', needle)
+  check('no results says so', await until(avery, () => document.querySelector('#search-hits')?.textContent.includes('No results')))
+  await visit(blake, '/client/ch_general')
+  await blake.click('#composer')
+  await blake.keyboard.type(`Found the ${needle}`)
+  await blake.keyboard.press('Enter')
+  check('new messages show up in results live', await until(avery, needle => document.querySelector('#search-hits')?.textContent.includes(`Found the ${needle}`), needle))
+  await avery.click('#search-hits a:has-text("View in channel")')
+  await avery.waitForURL(/\/client\/ch_general/, { timeout: 5000 }).catch(() => {})
+  check('a result opens its conversation', await sees(avery, `Found the ${needle}`))
 
   for (const { errors } of people) for (const error of errors) check('no browser errors', false, error)
 } finally {

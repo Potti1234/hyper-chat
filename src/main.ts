@@ -11,6 +11,7 @@ import * as ClientPage from '@/app/client/page'
 import * as ActivityPage from '@/app/activity/page'
 import * as ChannelsPage from '@/app/channels/page'
 import * as LaterPage from '@/app/later/page'
+import * as SearchPage from '@/app/search/page'
 import * as DmsPage from '@/app/dms/page'
 import * as ThreadsPage from '@/app/threads/page'
 import * as Postgres from '@/app/postgres'
@@ -46,6 +47,7 @@ const Routes = Layer.mergeAll(
   Hyper.layer(ChannelsPage.program, { ...page, path: '/channels' }),
   Hyper.layer(ActivityPage.program, { ...page, path: '/activity' }),
   Hyper.layer(LaterPage.program, { ...page, path: '/later' }),
+  Hyper.layer(SearchPage.program, { ...page, path: '/search' }),
   Hyper.layer(DmsPage.program, { ...page, path: '/dms' }),
   Hyper.layer(ClientPage.program, { ...page, path: '/client/:channel', paths: ['/', '/client/:channel/thread/:thread'], prefetch: ['/client/*'] }),
   Auth.routes,

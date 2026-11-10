@@ -82,6 +82,7 @@ export const pageRoot = <Msg>(
 /** Classes of the Slack frame and message list (design.css), named once. */
 export const slack = {
   frame: 'slack-frame',
+  topBar: 'slack-topbar',
   rail: 'slack-rail',
   railDot: 'rail-dot',
   workspaceIcon: 'workspace-icon',

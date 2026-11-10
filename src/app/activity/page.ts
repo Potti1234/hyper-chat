@@ -16,7 +16,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
-import { Nav, WORKSPACE_NAME, emptyNav, hasUnread, navOf, rail, sameNav } from '../view/shell'
+import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's Activity tab: mentions of you, replies in your threads and
    reactions to your messages, newest first, in a list pane with filter
@@ -282,6 +282,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'activity', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
+          topBar({}, h),
           region(h, { id: 'activity-list', deps: [model.items, model.members, model.tab, model.isUnreadOnly, model.picked, model.seenAt, model.now], render: () => listView(model, h) }),
           box({ as: 'main', class: slack.main, children: [
               region(h, { id: 'activity-preview', deps: [model.items, model.root, model.members, model.picked, model.now], render: () => previewView(model, h) }),

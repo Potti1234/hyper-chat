@@ -14,7 +14,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
-import { Nav, WORKSPACE_NAME, emptyNav, hasUnread, navOf, rail, sameNav } from '../view/shell'
+import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's Later: messages you saved, in progress or completed, newest
    saved first. Each one can be completed, moved back or removed, and
@@ -232,6 +232,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'later', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
+          topBar({}, h),
           box({ as: 'main', class: slack.main, children: [
               region(h, { id: 'later', deps: [model.items, model.members, model.tab, model.now, model.notice], render: () => listView(model, h) }),
             ] }, h),

@@ -22,6 +22,8 @@ export const inputVariants = {
   dense: 'h-8 text-[13px] md:text-[13px]',
   // Find a DM: on the sidebar's colours.
   'sidebar-search': 'h-8 border-sidebar-border bg-sidebar-accent/40 text-[13px] text-sidebar-accent-foreground shadow-none placeholder:text-sidebar-foreground/70 md:text-[13px] dark:bg-sidebar-accent/40',
+  // The top bar's search field on the frame colours.
+  'top-search': 'h-7 w-full border-white/25 bg-white/15 pl-8 text-[13px] text-white shadow-none placeholder:text-white/70 focus-visible:bg-background focus-visible:text-foreground focus-visible:placeholder:text-muted-foreground md:text-[13px] dark:bg-white/10',
   search: 'h-7 pl-7 text-[13px] shadow-none md:text-[13px]',
   'title-xl': 'h-auto border-0 px-0 py-1 text-[32px] font-bold tracking-[-0.02em] shadow-none focus-visible:ring-0 md:text-[32px] dark:bg-transparent',
   'title-lg': 'h-auto border-0 px-0 py-1 text-[22px] font-semibold tracking-[-0.01em] shadow-none focus-visible:ring-0 aria-invalid:ring-0 md:text-[22px] dark:bg-transparent',

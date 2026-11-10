@@ -4,6 +4,7 @@ import type { Html, HtmlBuilder } from 'foldkit/html'
 import * as Icon from '@/lib/icon'
 import { badge } from '@/ui/badge'
 import { button, buttonLink } from '@/ui/button'
+import { input } from '@/ui/input'
 
 import { activityOf, unseenCount } from '../activity'
 import { ACTIVITY_READ, type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, mentions, readAt } from '../domain'
@@ -70,7 +71,7 @@ export const hasUnread = (nav: Nav): boolean => [...nav.channels, ...nav.dms].so
 
 // RAIL
 
-export type RailItem = 'home' | 'dms' | 'activity' | 'later'
+export type RailItem = 'home' | 'dms' | 'activity' | 'later' | 'search'
 
 type RailProps<Msg> = Readonly<{
   me: Member
@@ -104,6 +105,23 @@ export const rail = <Msg>(props: RailProps<Msg>, h: HtmlBuilder<Msg>): Html =>
           button({ variant: 'sidebar-icon', size: 'icon', type: 'submit', ariaLabel: 'Sign out', title: 'Sign out', children: [Icon.icon('log-out', {}, h)] }, h),
         ] }, h),
       box({ as: 'span', class: 'relative mt-1', attributes: [h.Title(props.me.name)], children: [avatar(props.me, h, 'md'), box({ as: 'span', class: slack.presenceDot, attributes: [h.AriaLabel('Active')] }, h)] }, h),
+    ] }, h)
+
+// TOP BAR
+
+type TopBarProps<Msg> = Readonly<{
+  /** On the search page the field itself; elsewhere a link to it. */
+  search?: Readonly<{ value: string; onInput: (text: string) => Msg }>
+}>
+
+export const topBar = <Msg>(props: TopBarProps<Msg>, h: HtmlBuilder<Msg>): Html =>
+  box({ as: 'header', class: slack.topBar, attributes: [h.Id('top-bar')], children: [
+      box({ attributes: [h.DataAttribute('slot', 'top-search'), h.Role('search')], children: props.search === undefined
+          ? [buttonLink({ id: 'open-search', href: '/search', variant: 'top-search', size: 'compact', leadingIcon: Icon.icon('search', {}, h), children: [`Search ${WORKSPACE_NAME}`] }, h)]
+          : [
+              Icon.icon('search', { class: 'pointer-events-none absolute top-1.5 left-2.5 z-10 size-4 opacity-70' }, h),
+              input({ id: 'search-input', type: 'search', value: props.search.value, placeholder: `Search ${WORKSPACE_NAME}`, ariaLabel: 'Search', autocomplete: 'off', onInput: props.search.onInput, variant: 'top-search' }, h),
+            ] }, h),
     ] }, h)
 
 // SIDEBAR

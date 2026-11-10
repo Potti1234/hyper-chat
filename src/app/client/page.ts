@@ -20,7 +20,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
-import { Nav, emptyNav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '../view/shell'
+import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, sidebar, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* A conversation (channel or direct message), Slack's main view: the frame
    (rail and sidebar), the conversation header, messages grouped by day and
@@ -1242,6 +1242,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
+          topBar({}, h),
           region(h, {
             id: 'sidebar',
             deps: [model.nav, model.members, model.channelId, model.collapsed],

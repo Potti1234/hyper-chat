@@ -17,7 +17,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { MAX_DM_PEOPLE } from '../workspace'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { Nav, emptyNav, NavRow, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav } from '../view/shell'
+import { emptyNav, hasUnread, Nav, navOf, NavRow, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's DMs tab: your direct messages, the most recent first, with who
    wrote last and what, and a filter; beside them "New message", where you
@@ -380,6 +380,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'dms', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
+          topBar({}, h),
           region(h, { id: 'dm-list', deps: [model.dms, model.members, model.filter, model.now, model.me.id], render: () => listView(model, h) }),
           box({ as: 'main', class: slack.main, children: [
               box({ as: 'header', class: 'flex min-h-[49px] shrink-0 items-center gap-2 border-b px-4', attributes: [h.Id('new-message-header')], children: [

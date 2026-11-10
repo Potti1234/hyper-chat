@@ -14,15 +14,18 @@
   /* Creaseui presets have no Slack frame colours: the rail takes the
      sidebar's, links and mentions the primary's. */
   .app-root[class*='theme-'] { --rail: color-mix(in oklab, var(--sidebar), black 12%); --link: var(--primary); --mention: color-mix(in oklab, var(--primary), transparent 82%); --mention-foreground: var(--primary); }
-  .slack-frame { display: flex; flex: 1; min-width: 0; background: var(--rail); padding: 0 4px 4px 0; }
+  .slack-frame { display: flex; flex: 1; flex-wrap: wrap; align-content: flex-start; min-width: 0; background: var(--rail); padding: 0 4px 4px 0; }
+  /* Slack's top bar over the conversation: the search field in the middle. */
+  .slack-topbar { position: relative; display: flex; flex: 0 0 100%; height: 40px; align-items: center; justify-content: center; padding: 0 8px; }
+  .slack-topbar [data-slot='top-search'] { position: relative; width: min(720px, 60%); }
   .slack-rail { display: flex; width: 70px; flex-shrink: 0; flex-direction: column; align-items: center; gap: 12px; padding: 8px 0 12px; background: var(--rail); color: var(--sidebar-foreground); }
   .slack-rail [data-slot='rail-icon'] { position: relative; display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 8px; transition: background-color 120ms; }
   .rail-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 9999px; background: var(--sidebar-accent-foreground); }
   .workspace-icon { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 8px; background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); font-size: 18px; font-weight: 800; }
   .presence-dot { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 9999px; border: 2px solid var(--rail); background: var(--success); }
-  .slack-sidebar { display: flex; width: 260px; flex-shrink: 0; flex-direction: column; margin-top: 4px; border-radius: 8px 0 0 8px; background: var(--sidebar); color: var(--sidebar-foreground); }
+  .slack-sidebar { height: calc(100% - 40px); display: flex; width: 260px; flex-shrink: 0; flex-direction: column; border-radius: 8px 0 0 8px; background: var(--sidebar); color: var(--sidebar-foreground); }
   .dm-count { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 5px; background: var(--sidebar-accent); font-size: 11px; font-weight: 700; }
-  .slack-main { display: flex; min-width: 0; flex: 1; flex-direction: column; margin-top: 4px; overflow: hidden; border-radius: 0 8px 8px 0; background: var(--background); }
+  .slack-main { height: calc(100% - 40px); display: flex; min-width: 1px; /* never fits beside the full-width top bar */ flex: 1; flex-direction: column; overflow: hidden; border-radius: 0 8px 8px 0; background: var(--background); }
 
   /* Messages: Slack's 15 px text, hover tint, compact follow-ups. */
   .message-row { position: relative; display: flex; gap: 8px; padding: 8px 20px; font-size: 15px; line-height: 22px; }
@@ -53,7 +56,7 @@
 
   /* The thread pane beside the conversation (Slack's secondary column). */
   .slack-main[data-split] { border-radius: 0; }
-  .slack-thread { display: flex; width: 420px; flex-shrink: 0; flex-direction: column; margin-top: 4px; overflow: hidden; border-left: 1px solid var(--border); border-radius: 0 8px 8px 0; background: var(--background); }
+  .slack-thread { height: calc(100% - 40px); display: flex; width: 420px; flex-shrink: 0; flex-direction: column; overflow: hidden; border-left: 1px solid var(--border); border-radius: 0 8px 8px 0; background: var(--background); }
   .slack-thread .composer { margin: 8px 16px 16px; }
   /* A thread in the Threads view: a framed card of its messages and composer. */
   .thread-card { display: flex; flex-direction: column; margin: 16px 20px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
@@ -61,7 +64,7 @@
   .thread-card .composer { margin: 4px 20px 16px; }
   /* The DMs tab: the list of direct messages in the sidebar's place, and the
      To field of a new message. */
-  .dm-list { display: flex; width: 360px; flex-shrink: 0; flex-direction: column; margin-top: 4px; border-radius: 8px 0 0 8px; background: var(--sidebar); color: var(--sidebar-foreground); }
+  .dm-list { height: calc(100% - 40px); display: flex; width: 360px; flex-shrink: 0; flex-direction: column; border-radius: 8px 0 0 8px; background: var(--sidebar); color: var(--sidebar-foreground); }
   .unread-dot { width: 8px; height: 8px; flex-shrink: 0; align-self: center; border-radius: 9999px; background: var(--link); }
   .recipient-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 49px; padding: 4px 16px; border-bottom: 1px solid var(--border); }
   .reply-divider { display: flex; align-items: center; gap: 8px; margin: 4px 20px; color: var(--muted-foreground); font-size: 13px; }

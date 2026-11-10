@@ -15,7 +15,7 @@ import { requireMember } from '../auth'
 import { ChannelKind, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, Member, canRead, channelSlug, compareChannels, isMemberOf } from '../domain'
 import { Workspace, type WorkspaceState } from '../store'
 import { box, pageRoot, slack } from '../view/design'
-import { Nav, emptyNav, WORKSPACE_NAME, hasUnread, navOf, rail, sameNav, sidebar } from '../view/shell'
+import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, sidebar, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's channel browser ("All channels"): every public channel and the
    private ones you are in, with members and description; join or leave from
@@ -326,6 +326,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
+          topBar({}, h),
           region(h, { id: 'sidebar', deps: [model.nav, model.members, model.collapsed], render: () => sidebar({ nav: model.nav, members: model.members, activeId: 'channels', collapsed: model.collapsed, onToggleSection: section => Message.ClickedToggleSection({ section }) }, h) }),
           box({ as: 'main', class: slack.main, children: [
               box({ as: 'header', class: 'flex min-h-[49px] shrink-0 items-center gap-2 border-b px-4', children: [

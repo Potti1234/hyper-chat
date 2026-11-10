@@ -34,6 +34,8 @@ export const buttonVariants = cva(
         sidebar: 'w-full justify-start font-normal text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
         'sidebar-unread': 'w-full justify-start font-bold text-sidebar-accent-foreground hover:bg-sidebar-accent',
         'sidebar-active': 'w-full justify-start font-medium bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary',
+        // The top bar's "Search Northwind" field, a link to the search page.
+        'top-search': 'w-full justify-start border border-white/25 bg-white/15 font-normal text-white/80 hover:bg-white/25 hover:text-white',
         'sidebar-icon': 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground aria-expanded:bg-sidebar-accent',
         rail: 'text-sidebar-foreground hover:text-sidebar-accent-foreground [&_[data-slot=rail-icon]]:hover:bg-sidebar-accent',
         'rail-active': 'text-sidebar-accent-foreground [&_[data-slot=rail-icon]]:bg-sidebar-accent',
