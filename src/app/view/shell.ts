@@ -7,7 +7,7 @@ import { button, buttonLink } from '@/ui/button'
 import { input } from '@/ui/input'
 
 import { activityOf, unseenCount } from '../activity'
-import { ACTIVITY_READ, type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, isMuted, mentions, readAt } from '../domain'
+import { ACTIVITY_READ, type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, isMuted, isStarred, mentions, readAt } from '../domain'
 import { isPaused } from '../profile'
 import type { WorkspaceState } from '../store'
 import { box, slack } from './design'
@@ -31,6 +31,8 @@ export const NavRow = S.Struct({
   isOnline: S.Boolean,
   /** Muted by you: greyed and never bold, though mentions still count. */
   isMuted: S.Boolean,
+  /** Starred by you: shown in the Starred section instead of its own. */
+  isStarred: S.Boolean,
 })
 export type NavRow = typeof NavRow.Type
 
@@ -54,6 +56,7 @@ const navRow = (state: WorkspaceState, channel: Channel, me: Member): NavRow => 
     partnerIds,
     isOnline: partnerIds.length === 1 && state.online.includes(partnerIds[0] ?? ''),
     isMuted: isMuted(me, channel.id),
+    isStarred: isStarred(me, channel.id),
   }
 }
 
@@ -71,7 +74,7 @@ export const navOf = (state: WorkspaceState, me: Member): Nav => {
 }
 
 const sameRow = (a: NavRow, b: NavRow) =>
-  a.id === b.id && a.label === b.label && a.kind === b.kind && a.isUnread === b.isUnread && a.mentions === b.mentions && a.partnerIds.join() === b.partnerIds.join() && a.isOnline === b.isOnline && a.isMuted === b.isMuted
+  a.id === b.id && a.label === b.label && a.kind === b.kind && a.isUnread === b.isUnread && a.mentions === b.mentions && a.partnerIds.join() === b.partnerIds.join() && a.isOnline === b.isOnline && a.isMuted === b.isMuted && a.isStarred === b.isStarred
 const sameRows = (a: ReadonlyArray<NavRow>, b: ReadonlyArray<NavRow>) => a.length === b.length && a.every((row, index) => sameRow(row, b[index] as NavRow))
 export const sameNav = (a: Nav, b: Nav): boolean => a.activity === b.activity && sameRows(a.channels, b.channels) && sameRows(a.dms, b.dms)
 
@@ -197,6 +200,9 @@ const section = <Msg>(
     ] }, h)
 }
 
+/** Starred channels, then starred DMs, each in its section's order. */
+const starredOf = (nav: Nav): ReadonlyArray<NavRow> => [...nav.channels, ...nav.dms].filter(row => row.isStarred)
+
 export const sidebar = <Msg>(props: SidebarProps<Msg>, h: HtmlBuilder<Msg>): Html =>
   box({ as: 'aside', class: slack.sidebar, attributes: [h.Id('sidebar'), h.AriaLabel('Conversations')], children: [
       box({ as: 'header', class: 'flex h-12 shrink-0 items-center gap-1 px-3', children: [
@@ -207,10 +213,11 @@ export const sidebar = <Msg>(props: SidebarProps<Msg>, h: HtmlBuilder<Msg>): Htm
           box({ as: 'nav', class: 'mt-2 flex flex-col', attributes: [h.AriaLabel('Views')], children: [
               buttonLink({ href: '/threads', variant: props.activeId === 'threads' ? 'sidebar-active' : 'sidebar', size: 'row', leadingIcon: Icon.icon('message-square-text', {}, h), children: [box({ as: 'span', class: 'min-w-0 flex-1 truncate text-left', children: ['Threads'] }, h)] }, h),
             ] }, h),
+          ...(starredOf(props.nav).length === 0 ? [] : [section('starred', 'Starred', starredOf(props.nav).map(row => sidebarRow(row, props, h)), props, h)]),
           section('channels', 'Channels', [
-              ...props.nav.channels.map(row => sidebarRow(row, props, h)),
+              ...props.nav.channels.filter(row => !row.isStarred).map(row => sidebarRow(row, props, h)),
               buttonLink({ href: '/channels', variant: props.activeId === 'channels' ? 'sidebar-active' : 'sidebar', size: 'row', leadingIcon: Icon.icon('plus', {}, h), children: [box({ as: 'span', class: 'min-w-0 flex-1 truncate text-left', children: ['Add channels'] }, h)] }, h),
             ], props, h),
-          section('dms', 'Direct messages', props.nav.dms.map(row => sidebarRow(row, props, h)), props, h),
+          section('dms', 'Direct messages', props.nav.dms.filter(row => !row.isStarred).map(row => sidebarRow(row, props, h)), props, h),
         ] }, h),
     ] }, h)

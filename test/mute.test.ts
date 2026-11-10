@@ -8,6 +8,21 @@ import { hasUnread, navOf } from '@/app/view/shell'
 
 import { workspaceLayer } from './support'
 
+describe('starred conversations', () => {
+  it.effect('move to the Starred rows and back', () =>
+    Effect.gen(function* () {
+      const workspace = yield* Workspace
+      yield* workspace.setStarred('mem_avery', 'ch_general', true)
+      const state = yield* workspace.current
+      const avery = state.members.find(member => member.id === 'mem_avery')!
+      assert.deepStrictEqual(avery.starred, ['ch_general'])
+      assert.isTrue(navOf(state, avery).channels.find(channel => channel.id === 'ch_general')!.isStarred)
+      yield* workspace.setStarred('mem_avery', 'ch_general', false)
+      assert.isUndefined((yield* workspace.current).members.find(member => member.id === 'mem_avery')!.starred)
+    }).pipe(Effect.provide(workspaceLayer())),
+  )
+})
+
 describe('muted conversations', () => {
   it.effect('grey a channel, keep it out of the unread dot, and still count mentions', () =>
     Effect.gen(function* () {

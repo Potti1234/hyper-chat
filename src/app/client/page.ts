@@ -17,7 +17,7 @@ import { textarea } from '@/ui/textarea'
 
 import { requireMember } from '../auth'
 import { Files, MAX_FILE_BYTES } from '../files'
-import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, isMuted, preferencesOf, readAt } from '../domain'
+import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, isMuted, isStarred, preferencesOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { sameIds } from '../presence'
@@ -171,6 +171,7 @@ export const Message = defineMessageUnion({
   ClickedLeave: {},
   ClickedArchive: { isArchived: S.Boolean },
   ClickedMute: { isMuted: S.Boolean },
+  ClickedStar: { isStarred: S.Boolean },
   SucceededJoin: {},
   SucceededField: {},
   LeftChannel: {},
@@ -215,6 +216,7 @@ export const ClientMessage = S.Union([
   Message.ClickedLeave,
   Message.ClickedArchive,
   Message.ClickedMute,
+  Message.ClickedStar,
   S.TaggedStruct('GotDetailsDialog', { message: Dialog.Message.RequestedClose }),
   // The dialog's own bindings; its Command results never come from the page.
   S.TaggedStruct('GotConfirmDialog', { message: Dialog.Message.RequestedClose }),
@@ -390,6 +392,16 @@ export const SetMuted = Command.define('SetMuted', {
   messages: [Message.CompletedChange, Message.FailedChange],
   execute: ({ channelId, isMuted, memberId }) =>
     Workspace.use(workspace => workspace.setMuted(memberId, channelId, isMuted)).pipe(
+      Effect.as(Message.CompletedChange()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const SetStarred = Command.define('SetStarred', {
+  args: { channelId: S.String, isStarred: S.Boolean, memberId: S.String },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ channelId, isStarred, memberId }) =>
+    Workspace.use(workspace => workspace.setStarred(memberId, channelId, isStarred)).pipe(
       Effect.as(Message.CompletedChange()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
@@ -748,6 +760,11 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
         const channel = model.channel
         if (channel === null || !isMemberOf(channel, model.me.id) || isMuted(model.me, channel.id) === mute) return { model }
         return { model, commands: [SetMuted({ channelId: channel.id, isMuted: mute, memberId: model.me.id })] }
+      },
+      ClickedStar: ({ isStarred: star }) => {
+        const channel = model.channel
+        if (channel === null || !isMemberOf(channel, model.me.id) || isStarred(model.me, channel.id) === star) return { model }
+        return { model, commands: [SetStarred({ channelId: channel.id, isStarred: star, memberId: model.me.id })] }
       },
       ClickedArchive: ({ isArchived }) => {
         const channel = ownChannel(model)
@@ -1300,6 +1317,13 @@ const threadView = (model: Model, h: HtmlBuilder<Message>): Html => {
     ] }, h)
 }
 
+/** Slack's star next to the conversation name. */
+const starButton = (model: Model, channel: Channel, h: HtmlBuilder<Message>): Html => {
+  const starred = isStarred(model.me, channel.id)
+  const what = channel.kind === 'dm' ? 'conversation' : 'channel'
+  return button({ id: 'star-channel', variant: starred ? 'star-on' : 'ghost', size: 'icon-sm', isPressed: starred, ariaLabel: starred ? `Unstar ${what}` : `Star ${what}`, title: starred ? `Starred: remove from Starred` : `Star this ${what}`, onClick: Message.ClickedStar({ isStarred: !starred }), children: [Icon.icon('star', {}, h)] }, h)
+}
+
 /** Slack's "Mute channel" / "Mute conversation", from the header. */
 const muteButton = (model: Model, channel: Channel, h: HtmlBuilder<Message>): Html => {
   const muted = isMuted(model.me, channel.id)
@@ -1315,6 +1339,7 @@ const headerView = (model: Model, h: HtmlBuilder<Message>): Html => {
           box({ as: 'h1', class: 'flex min-w-0 items-center gap-1 text-[18px] font-black', children: channel === null || channel.kind === 'dm'
               ? [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)]
               : [button({ id: 'channel-title', variant: 'channel-title', size: 'sm', ariaLabel: `Channel details for #${channel.name}`, onClick: Message.ClickedOpenDetails({ tab: 'about', field: null }), leadingIcon: Icon.icon(channel.kind === 'private' ? 'lock' : 'hash', { class: 'size-[18px]' }, h), trailingIcon: Icon.icon('chevron-down', { class: 'size-4' }, h), children: [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)] }, h)] }, h),
+          ...(channel === null || !isMemberOf(channel, model.me.id) ? [] : [starButton(model, channel, h)]),
           ...(channel === null || channel.kind === 'dm'
             ? []
             : channel.topic === ''
@@ -1390,7 +1415,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
             render: () => sidebar({ nav: model.nav, members: model.members, activeId: model.channelId, collapsed: model.collapsed, onToggleSection: section => Message.ClickedToggleSection({ section }) }, h),
           }),
           box({ as: 'main', class: slack.main, attributes: model.thread === null ? [] : [h.DataAttribute('split', '')], children: [
-              region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id, model.me.muted, model.pins.length], render: () => headerView(model, h) }),
+              region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id, model.me.muted, model.me.starred, model.pins.length], render: () => headerView(model, h) }),
               region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id, model.saved, model.pins, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
               region(h, { id: 'composer-area', deps: [model.draft, model.uploads, model.uploading, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
               region(h, { id: 'typing', deps: [model.typing, model.members], render: () => typingView(model, h) }),

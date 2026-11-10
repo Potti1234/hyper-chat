@@ -75,7 +75,7 @@ const updateMember = (data: WorkspaceData, memberId: string, patch: Partial<Memb
   return (Object.keys(patch) as ReadonlyArray<keyof Member>).every(key => member[key] === next[key]) ? data : { ...data, members: replace(data.members, next) }
 }
 
-const clearMember = (data: WorkspaceData, memberId: string, key: 'status' | 'pausedUntil' | 'muted'): WorkspaceData => {
+const clearMember = (data: WorkspaceData, memberId: string, key: 'status' | 'pausedUntil' | 'muted' | 'starred'): WorkspaceData => {
   const member = data.members.find(candidate => candidate.id === memberId)
   if (member === undefined || member[key] === undefined) return data
   const { [key]: _cleared, ...rest } = member
@@ -135,19 +135,25 @@ export const setStatus =
     return unchanged(undefined, updateMember(data, memberId, { status: { emoji: input.emoji === '' ? STATUS_EMOJI : input.emoji, text, until: input.until } }))
   }
 
-/** Mutes or unmutes a conversation for one member (Slack's "Mute channel"). */
-export const setMuted =
-  (memberId: string, channelId: string, isMuted: boolean): Op<void, InvalidChange> =>
+/** Adds a conversation to, or takes it out of, one of a member's lists. */
+const setListed =
+  (key: 'muted' | 'starred', memberId: string, channelId: string, isListed: boolean): Op<void, InvalidChange> =>
   data => {
     const member = data.members.find(candidate => candidate.id === memberId)
     if (member === undefined) return invalid('Unknown member.')
     const channel = data.channels.find(candidate => candidate.id === channelId)
     if (channel === undefined || !canRead(channel, memberId) || !isMemberOf(channel, memberId)) return invalid('Join the conversation first.')
-    const before = member.muted ?? []
-    if (before.includes(channelId) === isMuted) return unchanged(undefined, data)
-    const after = isMuted ? [...before, channelId].sort() : before.filter(id => id !== channelId)
-    return unchanged(undefined, after.length === 0 ? clearMember(data, memberId, 'muted') : updateMember(data, memberId, { muted: after }))
+    const before = member[key] ?? []
+    if (before.includes(channelId) === isListed) return unchanged(undefined, data)
+    const after = isListed ? [...before, channelId].sort() : before.filter(id => id !== channelId)
+    return unchanged(undefined, after.length === 0 ? clearMember(data, memberId, key) : updateMember(data, memberId, { [key]: after }))
   }
+
+/** Mutes or unmutes a conversation for one member (Slack's "Mute channel"). */
+export const setMuted = (memberId: string, channelId: string, isMuted: boolean): Op<void, InvalidChange> => setListed('muted', memberId, channelId, isMuted)
+
+/** Stars a conversation for one member, or takes the star off. */
+export const setStarred = (memberId: string, channelId: string, isStarred: boolean): Op<void, InvalidChange> => setListed('starred', memberId, channelId, isStarred)
 
 /** Pauses notifications until then; 0 (or a moment past) resumes them. */
 export const setPaused =

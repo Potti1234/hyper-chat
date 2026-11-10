@@ -41,6 +41,7 @@ import {
   setTheme,
   setPaused,
   setMuted,
+  setStarred,
   setStatus,
   updateProfile,
 } from './workspace'
@@ -108,6 +109,7 @@ export class Workspace extends Context.Service<
     readonly setStatus: (memberId: string, input: Readonly<{ emoji: string; text: string; until: number }>) => Effect.Effect<void, InvalidChange>
     readonly setPaused: (memberId: string, until: number) => Effect.Effect<void>
     readonly setMuted: (memberId: string, channelId: string, isMuted: boolean) => Effect.Effect<void, InvalidChange>
+    readonly setStarred: (memberId: string, channelId: string, isStarred: boolean) => Effect.Effect<void, InvalidChange>
     readonly createChannel: (input: NewChannelInput, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly joinChannel: (channelId: string, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly leaveChannel: (channelId: string, actorId: string) => Effect.Effect<void, InvalidChange>
@@ -160,6 +162,7 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
   setStatus: (memberId, input) => backend.run(setStatus(memberId, input)),
   setPaused: (memberId, until) => backend.run(setPaused(memberId, until)),
   setMuted: (memberId, channelId, isMuted) => backend.run(setMuted(memberId, channelId, isMuted)),
+  setStarred: (memberId, channelId, isStarred) => backend.run(setStarred(memberId, channelId, isStarred)),
   createChannel: (input, actorId) => backend.run(createChannel(input, actorId)),
   joinChannel: (channelId, actorId) => backend.run(joinChannel(channelId, actorId)),
   leaveChannel: (channelId, actorId) => backend.run(leaveChannel(channelId, actorId)),

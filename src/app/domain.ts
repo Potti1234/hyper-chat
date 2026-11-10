@@ -47,10 +47,13 @@ export const Member = S.Struct({
   preferences: S.optionalKey(Preferences),
   /** Conversations they muted: greyed in the sidebar and never bold. */
   muted: S.optionalKey(S.Array(S.String)),
+  /** Conversations they starred: the Starred section at the top of the sidebar. */
+  starred: S.optionalKey(S.Array(S.String)),
 })
 export type Member = typeof Member.Type
 
 export const isMuted = (member: Member, channelId: string): boolean => member.muted?.includes(channelId) === true
+export const isStarred = (member: Member, channelId: string): boolean => member.starred?.includes(channelId) === true
 
 /** Demo addresses use a reserved example domain. */
 export const EMAIL_DOMAIN = 'hyperchat.example'

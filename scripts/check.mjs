@@ -259,6 +259,14 @@ try {
   await avery.keyboard.press('Enter')
   check('a new message bolds the channel for someone elsewhere', await until(blake, () => [...document.querySelectorAll('#sidebar a')].some(link => link.textContent.includes('general') && getComputedStyle(link).fontWeight >= 700)))
 
+  // Starring: the conversation moves to a Starred section at the top.
+  await visit(avery, '/client/ch_random')
+  await avery.click('#star-channel')
+  check('the header stars a channel', await until(avery, () => document.querySelector('#star-channel')?.getAttribute('aria-pressed') === 'true'))
+  check('it moves to the Starred section', await until(avery, () => document.querySelector('#sidebar section a[href="/client/ch_random"]')?.closest('section')?.querySelector('button')?.textContent.includes('Starred') === true))
+  await avery.click('#star-channel')
+  check('unstarring puts it back', await until(avery, () => document.querySelector('#sidebar section a[href="/client/ch_random"]')?.closest('section')?.querySelector('button')?.textContent.includes('Channels') === true))
+  await visit(avery, '/client/ch_general')
   // Muting: the channel greys out and stops being bold.
   const generalRow = "#sidebar a[href='/client/ch_general']"
   await visit(blake, '/client/ch_general')
