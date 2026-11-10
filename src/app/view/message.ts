@@ -77,7 +77,7 @@ export const authorName = <Msg>(author: Member | undefined, now: number, h: Html
 export const formatSize = (bytes: number): string =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 
-const fileUrl = (file: Attachment) => `/files/${encodeURIComponent(file.id)}`
+export const fileUrl = (file: Attachment) => `/files/${encodeURIComponent(file.id)}`
 
 const kindOf = (file: Attachment) => {
   if (isImage(file)) return file.type.replace('image/', '').toUpperCase()

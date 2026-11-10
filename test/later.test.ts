@@ -67,7 +67,7 @@ describe('saved for later and pins', () => {
       const state = yield* workspace.current
       const avery = state.members.find(member => member.id === 'mem_avery')!
       const slice = sliceOf(state, 'ch_general', 'mem_avery')
-      const { model } = clientInit({ me: avery, channelId: 'ch_general', channel: slice.channel!, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, saved: slice.saved, nav: slice.nav, now: 0, readMarker: 0, threadId: null })
+      const { model } = clientInit({ me: avery, channelId: 'ch_general', channel: slice.channel!, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, shared: slice.shared, saved: slice.saved, nav: slice.nav, now: 0, readMarker: 0, threadId: null })
       const saved = clientUpdate(model, { _tag: 'ClickedSave', messageId: message.id })
       assert.include(saved.model.saved, message.id)
       assert.strictEqual(saved.commands?.length, 1)

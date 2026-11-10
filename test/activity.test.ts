@@ -85,7 +85,7 @@ describe('activity and unreads', () => {
       assert.strictEqual(stranger.reason, 'Join this conversation first.')
 
       const slice = sliceOf(after, 'ch_general', 'mem_avery')
-      const { model } = clientInit({ me: avery, channelId: 'ch_general', channel: slice.channel!, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, saved: slice.saved, nav: slice.nav, now: 0, readMarker: Number.MAX_SAFE_INTEGER, threadId: null })
+      const { model } = clientInit({ me: avery, channelId: 'ch_general', channel: slice.channel!, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, shared: slice.shared, saved: slice.saved, nav: slice.nav, now: 0, readMarker: Number.MAX_SAFE_INTEGER, threadId: null })
       const marked = clientUpdate(model, { _tag: 'ClickedMarkUnread', messageId: first.id })
       assert.strictEqual(marked.model.readMarker, first.createdAt - 1)
       assert.strictEqual(marked.commands?.length, 1)

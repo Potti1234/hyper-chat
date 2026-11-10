@@ -183,6 +183,13 @@ try {
   const download = await blake.evaluate(() => [...document.querySelectorAll('#message-list [data-attachment][download]')].find(link => link.getAttribute('download') === 'page.html')?.getAttribute('href'))
   const html = await blake.request.get(`${base}${download}`)
   check('a non-image downloads as bytes, never as a page', html.headers()['content-type'] === 'application/octet-stream' && html.headers()['content-disposition']?.startsWith('attachment') === true)
+  check('the header gets a Files tab', await until(blake, () => /^Files \d+$/.test(document.querySelector('#open-files')?.textContent.trim() ?? '')))
+  await blake.click('#open-files')
+  check('it lists the shared files, newest first', await until(blake, () => document.querySelector('#shared-files [data-shared-file]')?.textContent.includes('page.html') === true && document.querySelector('#shared-files')?.textContent.includes('diagram.png') === true))
+  const fileHere = new URL(blake.url()).pathname
+  const fileMessage = await blake.locator('#shared-files [data-file-message]').first().getAttribute('data-file-message')
+  await live(blake, () => blake.locator('#shared-files [data-file-message]').first().click())
+  check('View message opens it in the conversation', blake.url().endsWith(`${fileHere}#message-${fileMessage}`) && await until(blake, id => document.querySelector(`#message-${id}`)?.matches(':target') === true, fileMessage))
 
   // Typing: the others see who is typing until they send or clear the draft.
   await blake.click('#composer')

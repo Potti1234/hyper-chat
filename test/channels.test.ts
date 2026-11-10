@@ -134,7 +134,7 @@ describe('channel management', () => {
       const modelFor = (memberId: string, channelId: string) => {
         const me = state.members.find(member => member.id === memberId)!
         const slice = sliceOf(state, channelId, memberId)
-        return clientInit({ me, channelId, channel: slice.channel!, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, saved: slice.saved, nav: slice.nav, now: 0, readMarker: 0, threadId: null }).model
+        return clientInit({ me, channelId, channel: slice.channel!, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, shared: slice.shared, saved: slice.saved, nav: slice.nav, now: 0, readMarker: 0, threadId: null }).model
       }
       const visitor = modelFor('mem_avery', 'ch_eng')
       const join = clientUpdate(visitor, { _tag: 'ClickedJoin' })
