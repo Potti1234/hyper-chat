@@ -1,0 +1,141 @@
+/* Component CSS of the app's owned design layer (crease.lock.json:
+   hyperchat/view). Every rule starts from a class the owning files render
+   (view/design.ts). */
+@layer components {
+  /* The page root (pageRoot): app type size, thin scrollbars, no native search clear button. */
+  .app-root { font-size: 13px; font-family: var(--font-sans); }
+  .app-root, .app-root * { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent) transparent; }
+  .app-root input[type='search']::-webkit-search-cancel-button { display: none; }
+}
+
+@layer components {
+  /* The Slack frame: rail and sidebar on the frame colours, the conversation
+     as a rounded white card inset from them. */
+  /* Creaseui presets have no Slack frame colours: the rail takes the
+     sidebar's, links and mentions the primary's. */
+  .app-root[class*='theme-'] { --rail: color-mix(in oklab, var(--sidebar), black 12%); --link: var(--primary); --mention: color-mix(in oklab, var(--primary), transparent 82%); --mention-foreground: var(--primary); }
+  /* Slack's sidebar colour themes (src/app/preferences.ts): the frame only, light and dark. */
+  .app-root.sidebar-clementine { --rail: oklch(0.36 0.09 45); --sidebar: oklch(0.44 0.12 45); --sidebar-foreground: oklch(0.9 0.02 45); --sidebar-primary: oklch(0.97 0.02 45); --sidebar-primary-foreground: oklch(0.44 0.12 45); --sidebar-accent: oklch(1 0 0 / 12%); --sidebar-accent-foreground: oklch(1 0 0); --sidebar-border: oklch(1 0 0 / 14%); }
+  .app-root.sidebar-banana { --rail: oklch(0.38 0.07 85); --sidebar: oklch(0.47 0.09 85); --sidebar-foreground: oklch(0.9 0.02 85); --sidebar-primary: oklch(0.97 0.02 85); --sidebar-primary-foreground: oklch(0.47 0.09 85); --sidebar-accent: oklch(1 0 0 / 12%); --sidebar-accent-foreground: oklch(1 0 0); --sidebar-border: oklch(1 0 0 / 14%); }
+  .app-root.sidebar-jade { --rail: oklch(0.28 0.05 170); --sidebar: oklch(0.36 0.07 170); --sidebar-foreground: oklch(0.9 0.02 170); --sidebar-primary: oklch(0.97 0.02 170); --sidebar-primary-foreground: oklch(0.36 0.07 170); --sidebar-accent: oklch(1 0 0 / 12%); --sidebar-accent-foreground: oklch(1 0 0); --sidebar-border: oklch(1 0 0 / 14%); }
+  .app-root.sidebar-lagoon { --rail: oklch(0.28 0.07 240); --sidebar: oklch(0.36 0.1 240); --sidebar-foreground: oklch(0.9 0.02 240); --sidebar-primary: oklch(0.97 0.02 240); --sidebar-primary-foreground: oklch(0.36 0.1 240); --sidebar-accent: oklch(1 0 0 / 12%); --sidebar-accent-foreground: oklch(1 0 0); --sidebar-border: oklch(1 0 0 / 14%); }
+  .app-root.sidebar-barbra { --rail: oklch(0.3 0.09 10); --sidebar: oklch(0.38 0.12 10); --sidebar-foreground: oklch(0.9 0.02 10); --sidebar-primary: oklch(0.97 0.02 10); --sidebar-primary-foreground: oklch(0.38 0.12 10); --sidebar-accent: oklch(1 0 0 / 12%); --sidebar-accent-foreground: oklch(1 0 0); --sidebar-border: oklch(1 0 0 / 14%); }
+  .app-root.sidebar-gray { --rail: oklch(0.25 0.005 285); --sidebar: oklch(0.32 0.006 285); --sidebar-foreground: oklch(0.9 0.02 285); --sidebar-primary: oklch(0.97 0.02 285); --sidebar-primary-foreground: oklch(0.32 0.006 285); --sidebar-accent: oklch(1 0 0 / 12%); --sidebar-accent-foreground: oklch(1 0 0); --sidebar-border: oklch(1 0 0 / 14%); }
+  .app-root.sidebar-mood-indigo { --rail: oklch(0.24 0.08 275); --sidebar: oklch(0.31 0.1 275); --sidebar-foreground: oklch(0.9 0.02 275); --sidebar-primary: oklch(0.97 0.02 275); --sidebar-primary-foreground: oklch(0.31 0.1 275); --sidebar-accent: oklch(1 0 0 / 12%); --sidebar-accent-foreground: oklch(1 0 0); --sidebar-border: oklch(1 0 0 / 14%); }
+  /* Compact message display (the view leaves out the pictures): tighter rows. */
+  .density-compact .message-row { padding-top: 3px; padding-bottom: 3px; }
+  .density-compact .message-row[data-continued] { padding-top: 0; padding-bottom: 0; }
+  .slack-frame { display: flex; flex: 1; flex-wrap: wrap; align-content: flex-start; min-width: 0; background: var(--rail); padding: 0 4px 4px 0; }
+  /* Slack's top bar over the conversation: the search field in the middle. */
+  .slack-topbar { position: relative; display: flex; flex: 0 0 100%; height: 40px; align-items: center; justify-content: center; padding: 0 8px; }
+  .slack-topbar [data-slot='top-search'] { position: relative; width: min(720px, 60%); }
+  .slack-rail { display: flex; width: 70px; flex-shrink: 0; flex-direction: column; align-items: center; gap: 12px; padding: 8px 0 12px; background: var(--rail); color: var(--sidebar-foreground); }
+  .slack-rail [data-slot='rail-icon'] { position: relative; display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 8px; transition: background-color 120ms; }
+  .rail-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 9999px; background: var(--sidebar-accent-foreground); }
+  .workspace-icon { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 8px; background: var(--sidebar-primary); color: var(--sidebar-primary-foreground); font-size: 18px; font-weight: 800; }
+  .presence-dot { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 9999px; border: 2px solid var(--rail); background: var(--success); }
+  .presence { position: absolute; right: -3px; bottom: -3px; width: 9px; height: 9px; border-radius: 9999px; box-shadow: 0 0 0 2px var(--presence-ring, var(--sidebar)); }
+  .presence-on { background: var(--success); }
+  .presence-off { border: 1.5px solid currentColor; background: var(--presence-ring, var(--sidebar)); opacity: 0.7; }
+  .profile-pane .presence, .person-card .presence { position: static; display: inline-block; --presence-ring: var(--background); box-shadow: none; }
+  .paused-badge { position: absolute; right: -4px; bottom: -4px; display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; border-radius: 9999px; border: 2px solid var(--rail); background: var(--rail); color: var(--sidebar-foreground); }
+  .paused-badge svg { width: 10px; height: 10px; }
+  .slack-sidebar { height: calc(100% - 40px); display: flex; width: 260px; flex-shrink: 0; flex-direction: column; border-radius: 8px 0 0 8px; background: var(--sidebar); color: var(--sidebar-foreground); }
+  .dm-count { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; border-radius: 5px; background: var(--sidebar-accent); font-size: 11px; font-weight: 700; }
+  .slack-main { height: calc(100% - 40px); display: flex; min-width: 1px; /* never fits beside the full-width top bar */ flex: 1; flex-direction: column; overflow: hidden; border-radius: 0 8px 8px 0; background: var(--background); }
+  .profile-pane { height: calc(100% - 40px); display: flex; width: 380px; flex-shrink: 0; flex-direction: column; overflow: hidden; border-left: 1px solid var(--border); border-radius: 0 8px 8px 0; background: var(--background); }
+  .people-grid { display: grid; min-height: 0; flex: 1; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); align-content: start; gap: 16px; overflow-y: auto; padding: 16px 20px; }
+  .person-card { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+  .person-card[aria-current] { border-color: var(--ring); background: var(--accent); }
+  @media (hover: hover) { .person-card:hover { border-color: var(--ring); background: var(--accent); } }
+  .person-card [data-slot='avatar'] { border-radius: 0; }
+
+  /* Messages: Slack's 15 px text, hover tint, compact follow-ups. */
+  .message-row { position: relative; display: flex; gap: 8px; padding: 8px 20px; font-size: 15px; line-height: 22px; }
+  .message-row[data-continued] { padding-top: 2px; padding-bottom: 2px; }
+  .message-row:target { background: color-mix(in oklab, var(--warning) 22%, transparent); }
+  .message-row[data-highlight] { flex-wrap: wrap; background: color-mix(in oklab, var(--warning) 14%, transparent); }
+  @media (hover: hover) { .message-row[data-highlight]:hover { background: color-mix(in oklab, var(--warning) 20%, transparent); } }
+  .message-labels { display: flex; width: 100%; gap: 12px; padding-left: 44px; font-size: 12px; line-height: 18px; color: var(--muted-foreground); }
+  @media (hover: hover) { .message-row:hover { background: color-mix(in oklab, var(--foreground) 4%, transparent); } }
+  .message-gutter { display: flex; width: 36px; flex-shrink: 0; justify-content: center; }
+  .message-hover-time { visibility: hidden; padding-top: 2px; font-size: 12px; line-height: 20px; color: var(--muted-foreground); }
+  @media (hover: hover) { .message-row:hover .message-hover-time { visibility: visible; } }
+  /* Slack's hover toolbar: over the top right corner of the message, also
+     shown while one of its buttons has focus or its menu is open. */
+  .message-actions { position: absolute; top: -16px; right: 20px; z-index: 10; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); box-shadow: 0 1px 3px rgb(0 0 0 / 0.08); visibility: hidden; }
+  @media (hover: hover) { .message-row:hover .message-actions { visibility: visible; } }
+  .message-row:focus-within .message-actions, .message-row[data-active] .message-actions { visibility: visible; }
+  .message-row[data-active], .message-row[data-editing] { background: color-mix(in oklab, var(--foreground) 4%, transparent); }
+  .message-row[data-editing] .message-actions { display: none; }
+  .message-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+  .message-text a { color: var(--link); }
+  @media (hover: hover) { .message-text a:hover { text-decoration: underline; } }
+  /* mrkdwn (src/app/mrkdwn.ts) in message text. */
+  .md-p { margin: 0; }
+  .md-quote { margin: 2px 0; border-left: 4px solid color-mix(in oklab, var(--foreground) 22%, transparent); padding-left: 12px; }
+  .md-code { border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 3px; padding: 1px 3px; background: var(--muted); color: var(--destructive); font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+  .md-pre { margin: 4px 0; overflow-x: auto; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 4px; padding: 8px; background: var(--muted); font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+  .md-list { margin: 0; padding-left: 26px; white-space: normal; }
+  .md-bullets { list-style: disc; }
+  .md-numbers { list-style: decimal; }
+  .mention { border-radius: 3px; padding: 0 2px; background: var(--mention); color: var(--mention-foreground); font-weight: 500; }
+  .day-divider { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: center; margin: 8px 0; }
+  .day-divider::before { content: ''; position: absolute; inset: 50% 0 auto; border-top: 1px solid var(--border); }
+  .day-divider > span { position: relative; border: 1px solid var(--border); border-radius: 9999px; background: var(--background); padding: 2px 16px; font-size: 13px; font-weight: 700; }
+  .new-divider { display: flex; align-items: center; gap: 8px; margin: 4px 20px; color: var(--destructive); font-size: 12px; font-weight: 700; }
+  .new-divider::before { content: ''; flex: 1; border-top: 1px solid var(--destructive); }
+
+  /* The thread pane beside the conversation (Slack's secondary column). */
+  .slack-main[data-split] { border-radius: 0; }
+  .slack-thread { height: calc(100% - 40px); display: flex; width: 420px; flex-shrink: 0; flex-direction: column; overflow: hidden; border-left: 1px solid var(--border); border-radius: 0 8px 8px 0; background: var(--background); }
+  .slack-thread .composer { margin: 8px 16px 16px; }
+  /* A thread in the Threads view: a framed card of its messages and composer. */
+  .thread-card { display: flex; flex-direction: column; margin: 16px 20px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; }
+  .thread-card .message-row { padding-left: 20px; padding-right: 20px; }
+  .thread-card .composer { margin: 4px 20px 16px; }
+  /* The DMs tab: the list of direct messages in the sidebar's place, and the
+     To field of a new message. */
+  .dm-list { height: calc(100% - 40px); display: flex; width: 360px; flex-shrink: 0; flex-direction: column; border-radius: 8px 0 0 8px; background: var(--sidebar); color: var(--sidebar-foreground); }
+  .unread-dot { width: 8px; height: 8px; flex-shrink: 0; align-self: center; border-radius: 9999px; background: var(--link); }
+  .recipient-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 49px; padding: 4px 16px; border-bottom: 1px solid var(--border); }
+  .reply-divider { display: flex; align-items: center; gap: 8px; margin: 4px 20px; color: var(--muted-foreground); font-size: 13px; }
+  .reply-divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+  .composer[data-inline] { margin: 4px 0; }
+  .composer { margin: 0 20px 20px; border: 1px solid var(--input); border-radius: 8px; background: var(--background); }
+  .composer:focus-within { border-color: color-mix(in oklab, var(--foreground) 45%, transparent); box-shadow: 0 1px 4px color-mix(in oklab, var(--foreground) 12%, transparent); }
+}
+
+.browse-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.browse-row [data-row-action] {
+  opacity: 0;
+}
+
+.browse-row:focus-within [data-row-action] {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .browse-row:hover {
+    background: var(--muted);
+  }
+
+  .browse-row:hover [data-row-action] {
+    opacity: 1;
+  }
+}
+
+.attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 2px; }
+.attachment-image { display: block; overflow: hidden; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 8px; }
+.attachment-image img { display: block; max-width: min(360px, 100%); max-height: 240px; object-fit: contain; }
+.attachment-file { display: flex; align-items: center; gap: 10px; width: min(360px, 100%); border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 8px; padding: 10px 12px; background: var(--background); }
+@media (hover: hover) { .attachment-file:hover { background: var(--muted); } }
+.upload-chip { display: flex; align-items: center; gap: 8px; width: 240px; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 8px; padding: 6px; background: var(--background); }

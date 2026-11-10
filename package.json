@@ -1,0 +1,55 @@
+{
+  "name": "hyperchat",
+  "version": "0.0.0",
+  "private": true,
+  "description": "hyper-chat: a Slack-style team chat with fictional demo channels, built with hyper-effect.",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build && tsx watch --env-file-if-exists=.env src/main.ts",
+    "start": "npm run build && node --env-file-if-exists=.env --import tsx src/main.ts",
+    "build": "npm run css",
+    "css": "tailwindcss -i src/styles.css -o public/styles.css --minify",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "setup": "node scripts/setup-env.mjs",
+    "db:up": "node scripts/setup-env.mjs && docker compose up -d --wait db",
+    "test:pg": "node scripts/fresh-db.mjs test",
+    "check": "node scripts/check.mjs",
+    "check:fresh": "node scripts/fresh-db.mjs check",
+    "demo:seed": "tsx --env-file-if-exists=.env scripts/demo.ts seed",
+    "demo:clear": "tsx --env-file-if-exists=.env scripts/demo.ts clear",
+    "demo:reset": "tsx --env-file-if-exists=.env scripts/demo.ts reset",
+    "user:create": "tsx --env-file-if-exists=.env scripts/create-user.ts",
+    "lint": "eslint src && creaseui-lint doctor && creaseui-lint css && vitest run test/overlays.test.ts test/native-controls.test.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.2",
+    "@effect/sql-pg": "4.1.2",
+    "@foldkit/ui": "0.170.0",
+    "@hyper-effect/core": "0.1.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "effect": "4.1.2",
+    "foldkit": "0.170.0",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@creaseui/lint": "file:vendor/creaseui-lint-0.1.0.tgz",
+    "@effect/vitest": "4.1.2",
+    "@tailwindcss/cli": "^4.3.1",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.14.0",
+    "playwright": "1.62.1",
+    "tailwindcss": "^4.3.1",
+    "tsx": "^4.23.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "overrides": {
+    "@effect/platform-node-shared": "4.1.2"
+  }
+}

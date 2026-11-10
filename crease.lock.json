@@ -1,0 +1,1156 @@
+{
+  "artifacts": [
+    {
+      "exports": [
+        {
+          "contract": "component.alert",
+          "file": "src/ui/alert.ts",
+          "name": "alert"
+        },
+        {
+          "contract": "component.alert",
+          "file": "src/ui/alert.ts",
+          "name": "alertIcon"
+        },
+        {
+          "contract": "component.alert",
+          "file": "src/ui/alert.ts",
+          "name": "alertTitle"
+        },
+        {
+          "contract": "component.alert",
+          "file": "src/ui/alert.ts",
+          "name": "alertDescription"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/alert.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/alert"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.avatar",
+          "file": "src/ui/avatar.ts",
+          "name": "avatar"
+        },
+        {
+          "contract": "component.avatar",
+          "file": "src/ui/avatar.ts",
+          "name": "avatarImage"
+        },
+        {
+          "contract": "component.avatar",
+          "file": "src/ui/avatar.ts",
+          "name": "avatarFallback"
+        },
+        {
+          "contract": "component.avatar",
+          "file": "src/ui/avatar.ts",
+          "name": "avatarBadge"
+        },
+        {
+          "contract": "component.avatar",
+          "file": "src/ui/avatar.ts",
+          "name": "avatarGroup"
+        },
+        {
+          "contract": "component.avatar",
+          "file": "src/ui/avatar.ts",
+          "name": "avatarGroupCount"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/avatar.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/avatar"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.badge",
+          "file": "src/ui/badge.ts",
+          "name": "badge"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/badge.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/badge"
+    },
+    {
+      "exports": [
+        {
+          "contract": "control.button",
+          "file": "src/ui/button.ts",
+          "name": "button"
+        },
+        {
+          "contract": "control.button",
+          "file": "src/ui/button.ts",
+          "name": "buttonLink"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/button.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/button"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.card",
+          "file": "src/ui/card.ts",
+          "name": "card"
+        },
+        {
+          "contract": "component.card",
+          "file": "src/ui/card.ts",
+          "name": "cardHeader"
+        },
+        {
+          "contract": "component.card",
+          "file": "src/ui/card.ts",
+          "name": "cardTitle"
+        },
+        {
+          "contract": "component.card",
+          "file": "src/ui/card.ts",
+          "name": "cardDescription"
+        },
+        {
+          "contract": "component.card",
+          "file": "src/ui/card.ts",
+          "name": "cardAction"
+        },
+        {
+          "contract": "component.card",
+          "file": "src/ui/card.ts",
+          "name": "cardContent"
+        },
+        {
+          "contract": "component.card",
+          "file": "src/ui/card.ts",
+          "name": "cardFooter"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/card.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/card"
+    },
+    {
+      "exports": [
+        {
+          "contract": "composition.center",
+          "file": "src/ui/center.ts",
+          "name": "center"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/center.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/center"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.checkbox",
+          "file": "src/ui/checkbox.ts",
+          "name": "checkbox"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/checkbox.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/checkbox"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.date-picker",
+          "file": "src/ui/date-picker.ts",
+          "name": "datePicker"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/date-picker.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/date-picker"
+    },
+    {
+      "exports": [
+        {
+          "contract": "overlay.dialog",
+          "file": "src/ui/dialog.ts",
+          "name": "dialogHeader"
+        },
+        {
+          "contract": "overlay.dialog",
+          "file": "src/ui/dialog.ts",
+          "name": "dialogTitle"
+        },
+        {
+          "contract": "overlay.dialog",
+          "file": "src/ui/dialog.ts",
+          "name": "dialogDescription"
+        },
+        {
+          "contract": "overlay.dialog",
+          "file": "src/ui/dialog.ts",
+          "name": "dialogFooter"
+        },
+        {
+          "contract": "overlay.dialog",
+          "file": "src/ui/dialog.ts",
+          "name": "dialog"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/dialog.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/dialog"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.dropdown-menu",
+          "file": "src/ui/dropdown-menu.ts",
+          "name": "dropdownMenu"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/dropdown-menu.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/dropdown-menu"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.empty",
+          "file": "src/ui/empty.ts",
+          "name": "empty"
+        },
+        {
+          "contract": "component.empty",
+          "file": "src/ui/empty.ts",
+          "name": "emptyHeader"
+        },
+        {
+          "contract": "component.empty",
+          "file": "src/ui/empty.ts",
+          "name": "emptyMedia"
+        },
+        {
+          "contract": "component.empty",
+          "file": "src/ui/empty.ts",
+          "name": "emptyTitle"
+        },
+        {
+          "contract": "component.empty",
+          "file": "src/ui/empty.ts",
+          "name": "emptyDescription"
+        },
+        {
+          "contract": "component.empty",
+          "file": "src/ui/empty.ts",
+          "name": "emptyContent"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/empty.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/empty"
+    },
+    {
+      "exports": [
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldSet"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldLegend"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldGroup"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "controlField"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "field"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldContent"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldLabel"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldTitle"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldDescription"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldSeparator"
+        },
+        {
+          "contract": "control.field",
+          "file": "src/ui/field.ts",
+          "name": "fieldError"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/field.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/field"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.file-input",
+          "file": "src/ui/file-button.ts",
+          "name": "fileButton"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/file-button.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/file-input"
+    },
+    {
+      "exports": [
+        {
+          "contract": "composition.form",
+          "file": "src/ui/form.ts",
+          "name": "form"
+        },
+        {
+          "contract": "composition.form",
+          "file": "src/ui/form.ts",
+          "name": "errorSummary"
+        },
+        {
+          "contract": "composition.form",
+          "file": "src/ui/form.ts",
+          "name": "formItem"
+        },
+        {
+          "contract": "composition.form",
+          "file": "src/ui/form.ts",
+          "name": "formLabel"
+        },
+        {
+          "contract": "composition.form",
+          "file": "src/ui/form.ts",
+          "name": "formDescription"
+        },
+        {
+          "contract": "composition.form",
+          "file": "src/ui/form.ts",
+          "name": "formMessage"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/form.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/form"
+    },
+    {
+      "exports": [
+        {
+          "contract": "composition.grid",
+          "file": "src/ui/grid.ts",
+          "name": "grid"
+        },
+        {
+          "contract": "composition.grid",
+          "file": "src/ui/grid.ts",
+          "name": "gridSpan"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/grid.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/grid"
+    },
+    {
+      "exports": [
+        {
+          "contract": "typography.heading",
+          "file": "src/ui/heading.ts",
+          "name": "heading"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/heading.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/heading"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.icon",
+          "file": "src/ui/icon.ts",
+          "name": "icon"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/icon.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/icon"
+    },
+    {
+      "exports": [
+        {
+          "contract": "control.input",
+          "file": "src/ui/input.ts",
+          "name": "input"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/input.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/input"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "item"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemMedia"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemContent"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemTitle"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemDescription"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemActions"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemHeader"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemFooter"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemGroupSeparator"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemGroup"
+        },
+        {
+          "contract": "component.item",
+          "file": "src/ui/item.ts",
+          "name": "itemSeparator"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/item.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/item"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.kbd",
+          "file": "src/ui/kbd.ts",
+          "name": "kbd"
+        },
+        {
+          "contract": "component.kbd",
+          "file": "src/ui/kbd.ts",
+          "name": "kbdGroup"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/kbd.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/kbd"
+    },
+    {
+      "exports": [
+        {
+          "contract": "control.label",
+          "file": "src/ui/label.ts",
+          "name": "label"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/label.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/label"
+    },
+    {
+      "exports": [
+        {
+          "contract": "navigation.link",
+          "file": "src/ui/link.ts",
+          "name": "link"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/link.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/link"
+    },
+    {
+      "exports": [
+        {
+          "contract": "composition.list",
+          "file": "src/ui/list.ts",
+          "name": "list"
+        },
+        {
+          "contract": "composition.list",
+          "file": "src/ui/list.ts",
+          "name": "listItem"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/list.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/list"
+    },
+    {
+      "exports": [
+        {
+          "contract": "control.native-select",
+          "file": "src/ui/native-select.ts",
+          "name": "nativeSelectOption"
+        },
+        {
+          "contract": "control.native-select",
+          "file": "src/ui/native-select.ts",
+          "name": "nativeSelectOptGroup"
+        },
+        {
+          "contract": "control.native-select",
+          "file": "src/ui/native-select.ts",
+          "name": "nativeSelect"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/native-select.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/native-select"
+    },
+    {
+      "exports": [
+        {
+          "contract": "feedback.progress",
+          "file": "src/ui/progress.ts",
+          "name": "progress"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/progress.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/progress"
+    },
+    {
+      "exports": [
+        {
+          "contract": "composition.section",
+          "file": "src/ui/section.ts",
+          "name": "section"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/section.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/section"
+    },
+    {
+      "exports": [
+        {
+          "contract": "composition.separator",
+          "file": "src/ui/separator.ts",
+          "name": "separator"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/separator.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/separator"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.spinner",
+          "file": "src/ui/spinner.ts",
+          "name": "spinner"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/spinner.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/spinner"
+    },
+    {
+      "exports": [
+        {
+          "contract": "composition.stack",
+          "file": "src/ui/stack.ts",
+          "name": "stack"
+        },
+        {
+          "contract": "composition.stack",
+          "file": "src/ui/stack.ts",
+          "name": "hStack"
+        },
+        {
+          "contract": "composition.stack",
+          "file": "src/ui/stack.ts",
+          "name": "vStack"
+        },
+        {
+          "contract": "composition.stack",
+          "file": "src/ui/stack.ts",
+          "name": "stackItem"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/stack.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/stack"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.stat",
+          "file": "src/ui/stat.ts",
+          "name": "stat"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/stat.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/stat"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.status-dot",
+          "file": "src/ui/status-dot.ts",
+          "name": "statusDot"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/status-dot.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/status-dot"
+    },
+    {
+      "exports": [
+        {
+          "contract": "data.table",
+          "file": "src/ui/table.ts",
+          "name": "table"
+        },
+        {
+          "contract": "data.table",
+          "file": "src/ui/table.ts",
+          "name": "tableHeader"
+        },
+        {
+          "contract": "data.table",
+          "file": "src/ui/table.ts",
+          "name": "tableBody"
+        },
+        {
+          "contract": "data.table",
+          "file": "src/ui/table.ts",
+          "name": "tableFooter"
+        },
+        {
+          "contract": "data.table",
+          "file": "src/ui/table.ts",
+          "name": "tableRow"
+        },
+        {
+          "contract": "data.table",
+          "file": "src/ui/table.ts",
+          "name": "tableHead"
+        },
+        {
+          "contract": "data.table",
+          "file": "src/ui/table.ts",
+          "name": "tableCell"
+        },
+        {
+          "contract": "data.table",
+          "file": "src/ui/table.ts",
+          "name": "tableCaption"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/table.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/table"
+    },
+    {
+      "exports": [
+        {
+          "contract": "typography.text",
+          "file": "src/ui/text.ts",
+          "name": "text"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/text.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/text"
+    },
+    {
+      "exports": [
+        {
+          "contract": "control.textarea",
+          "file": "src/ui/textarea.ts",
+          "name": "textarea"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/textarea.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/textarea"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.time-picker",
+          "file": "src/ui/time-picker.ts",
+          "name": "timePicker"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/time-picker.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/time-picker"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.toggle",
+          "file": "src/ui/toggle.ts",
+          "name": "toggle"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/toggle.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/toggle"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.tooltip",
+          "file": "src/ui/tooltip.ts",
+          "name": "tooltip"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/tooltip.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/tooltip"
+    },
+    {
+      "exports": [
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyH1"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyH2"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyH3"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyH4"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyP"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyBlockquote"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyInlineCode"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyLead"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyLarge"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographySmall"
+        },
+        {
+          "contract": "component.typography",
+          "file": "src/ui/typography.ts",
+          "name": "typographyMuted"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/typography.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/typography"
+    },
+    {
+      "exports": [],
+      "files": [
+        {
+          "path": "src/lib/anchored.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/button.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/dates.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/dropdown-menu-behavior.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/icon-nodes.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/icon.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/input.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/reference.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/subscribed.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/textarea.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/utils.ts",
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/alert.ts",
+          "rawRendering": true,
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/checkbox.ts",
+          "rawRendering": true,
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/field.ts",
+          "rawRendering": true,
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/form.ts",
+          "rawRendering": true,
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/progress.ts",
+          "rawRendering": true,
+          "role": "behavior"
+        },
+        {
+          "path": "src/lib/tooltip.ts",
+          "rawRendering": true,
+          "role": "behavior"
+        }
+      ],
+      "id": "crease/lib"
+    },
+    {
+      "exports": [],
+      "files": [
+        {
+          "path": "src/app/view/design.ts",
+          "rawElements": [
+            "div",
+            "span",
+            "p",
+            "a",
+            "ul",
+            "ol",
+            "li",
+            "header",
+            "footer",
+            "main",
+            "aside",
+            "nav",
+            "section",
+            "article",
+            "form",
+            "label",
+            "strong",
+            "em",
+            "code",
+            "pre",
+            "h1",
+            "h2",
+            "h3",
+            "button",
+            "br",
+            "blockquote",
+            "s",
+            "img"
+          ],
+          "rawRendering": true,
+          "role": "adapter"
+        },
+        {
+          "path": "src/app/view/design.css",
+          "role": "renderer"
+        },
+        {
+          "path": "src/app/view/icons.ts",
+          "rawElements": [
+            "span"
+          ],
+          "rawRendering": true,
+          "role": "adapter"
+        }
+      ],
+      "id": "hyperchat/view"
+    }
+  ],
+  "policyVersion": "crease-default-v1",
+  "renderer": "tailwind",
+  "schemaVersion": 1
+}

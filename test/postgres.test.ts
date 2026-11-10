@@ -1,0 +1,115 @@
+import { assert, describe, it } from '@effect/vitest'
+import { Context, Effect, Exit, Layer, Option, Scope, Stream } from 'effect'
+import { SqlClient } from 'effect/sql'
+
+import * as Files from '@/app/files'
+import * as Postgres from '@/app/postgres'
+import { demoData } from '@/app/seed'
+import { Workspace } from '@/app/store'
+
+/* The workspace in Postgres, against a throwaway database:
+
+     TEST_DATABASE_URL=postgres://hyperchat:hyperchat-dev@localhost:5435/hyperchat_test npm test
+
+   (`npm run test:pg` creates that database and runs this.) Two stores on one
+   database stand for two app processes: a change one makes reaches the other
+   through LISTEN/NOTIFY. Skipped without TEST_DATABASE_URL. */
+
+const url = process.env['TEST_DATABASE_URL']
+
+const reset = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient
+  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, saves, scheduled, passwords, presence, files CASCADE`
+}).pipe(Effect.provide(Postgres.clientLayerFor(url ?? '')))
+
+/** One store, as one app process would build it. */
+const fileStore = Effect.map(Layer.build(Files.postgresLayer.pipe(Layer.provide(Postgres.clientLayerFor(url ?? '')))), context => Context.get(context, Files.Files))
+
+const store = Effect.map(Layer.build(Postgres.layer.pipe(Layer.provide(Postgres.clientLayerFor(url ?? '')))), context => Context.get(context, Workspace))
+
+describe.skipIf(url === undefined)('workspace in Postgres', () => {
+  it.live('delivers messages, threads, edits, reactions, reads, saves, pins and deletes to another process', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* reset
+        const one = yield* store
+        yield* one.seedDemo(demoData(Date.UTC(2026, 10, 9, 12)))
+        const two = yield* store
+        const before = yield* two.current
+        assert.isTrue(before.messages.some(message => message.threadId !== null))
+        const message = yield* one.postMessage('ch_general', 'Persisted', 'mem_avery')
+        const reply = yield* one.postMessage('ch_general', 'In the thread', 'mem_blake', { threadId: message.id, alsoInChannel: true })
+        yield* one.editMessage(message.id, 'Persisted and edited', 'mem_avery')
+        yield* one.toggleReaction(message.id, '🎉', 'mem_casey') // eslint-disable-line crease/no-native-glyphs -- reaction content
+        yield* one.markRead('ch_general', 'mem_casey')
+        yield* one.toggleSaved(message.id, 'mem_casey')
+        yield* one.setSavedState(message.id, 'mem_casey', 'done')
+        yield* one.togglePin(message.id, 'mem_blake')
+        yield* one.updateProfile('mem_casey', { name: 'Casey Lindqvist', title: 'Design Lead', pronouns: 'they/them', timeZone: 'Asia/Tokyo' })
+        yield* one.setStatus('mem_casey', { emoji: '', text: 'Sketching', until: 0 })
+        yield* one.setPaused('mem_casey', Date.now() + 3_600_000)
+        yield* one.setPreferences('mem_casey', { sidebar: 'lagoon', isCompact: true, is24Hour: true })
+        yield* one.setMuted('mem_casey', 'ch_general', true)
+        yield* one.setStarred('mem_casey', 'ch_general', true)
+        yield* one.setNotify('mem_casey', 'ch_general', 'nothing')
+        const later = yield* one.scheduleMessage('ch_general', 'Sent later', 'mem_avery', Date.now() + 3_600_000)
+        yield* one.setReminder(message.id, 'mem_blake', Date.now() + 1_200_000)
+        yield* two.changes.pipe(
+          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1 && item.pinnedBy === 'mem_blake') && state.saves.some(saved => saved.messageId === message.id && saved.state === 'done') && state.messages.some(item => item.id === reply.id) && state.members.some(member => member.id === 'mem_casey' && member.pausedUntil !== undefined && member.preferences?.sidebar === 'lagoon' && member.muted?.includes('ch_general') === true && member.starred?.includes('ch_general') === true && member.notify?.['ch_general'] === 'nothing') && state.scheduled.some(item => item.id === later.id) && state.saves.some(saved => saved.memberId === 'mem_blake' && saved.remindAt !== undefined)),
+          Stream.runHead,
+          Effect.timeout('5 seconds'),
+        )
+        const after = yield* two.current
+        const stored = after.messages.find(item => item.threadId === message.id)
+        assert.isTrue(stored?.alsoInChannel)
+        assert.strictEqual(after.messages.find(item => item.id === message.id)?.reactions[0]?.memberIds[0], 'mem_casey')
+        assert.isTrue(after.reads.some(read => read.memberId === 'mem_casey' && read.channelId === 'ch_general'))
+        const restarted = yield* (yield* store).current
+        assert.strictEqual(restarted.messages.find(item => item.id === message.id)?.pinnedBy, 'mem_blake')
+        const casey = restarted.members.find(member => member.id === 'mem_casey')
+        assert.deepStrictEqual([casey?.title, casey?.pronouns, casey?.timeZone, casey?.status?.text], ['Design Lead', 'they/them', 'Asia/Tokyo', 'Sketching'])
+        assert.isAbove(casey?.pausedUntil ?? 0, 0)
+        assert.deepStrictEqual(casey?.preferences, { sidebar: 'lagoon', isCompact: true, is24Hour: true })
+        assert.deepStrictEqual(casey?.muted, ['ch_general'])
+        assert.deepStrictEqual(casey?.starred, ['ch_general'])
+        assert.deepStrictEqual(casey?.notify, { ch_general: 'nothing' })
+        assert.isTrue(restarted.saves.some(saved => saved.memberId === 'mem_casey' && saved.messageId === message.id && saved.state === 'done'))
+        assert.strictEqual(restarted.scheduled.find(item => item.id === later.id)?.text, 'Sent later')
+        assert.isAbove(restarted.saves.find(saved => saved.memberId === 'mem_blake' && saved.messageId === message.id)?.remindAt ?? 0, 0)
+        yield* one.cancelScheduled(later.id, 'mem_avery')
+        yield* two.changes.pipe(Stream.filter(state => state.scheduled.length === 0), Stream.runHead, Effect.timeout('5 seconds'))
+        yield* one.deleteMessage(message.id, 'mem_avery')
+        yield* two.changes.pipe(Stream.filter(state => !state.messages.some(item => item.id === message.id || item.id === reply.id)), Stream.runHead, Effect.timeout('5 seconds'))
+        // Presence: a page connected in one process shows as active in the other.
+        const page = yield* Scope.make()
+        yield* Scope.provide(one.connect('mem_casey'), page)
+        yield* two.changes.pipe(Stream.filter(state => state.online.includes('mem_casey')), Stream.runHead, Effect.timeout('5 seconds'))
+        yield* Scope.close(page, Exit.void)
+        yield* two.changes.pipe(Stream.filter(state => !state.online.includes('mem_casey')), Stream.runHead, Effect.timeout('5 seconds'))
+        // A third process starting now reads the same workspace from the tables.
+        const three = yield* store
+        const fresh = yield* three.current
+        assert.strictEqual(fresh.messages.length, (yield* two.current).messages.length)
+        assert.isFalse(fresh.messages.some(item => item.id === reply.id))
+        assert.isFalse(fresh.saves.some(saved => saved.messageId === message.id))
+      }),
+    ),
+  )
+
+  it.live('keeps uploaded files and messages that share them across restarts', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* reset
+        const one = yield* store
+        yield* one.seedDemo(demoData(Date.UTC(2026, 10, 9, 12)))
+        const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+        const file = yield* (yield* fileStore).put(new File([png], 'diagram.png'), 'mem_avery')
+        const message = yield* one.postMessage('ch_general', '', 'mem_avery', { files: [file] })
+        const restarted = yield* (yield* store).current
+        assert.deepStrictEqual(restarted.messages.find(item => item.id === message.id)?.files, [file])
+        const stored = Option.getOrThrow(yield* (yield* fileStore).get(file.id))
+        assert.deepStrictEqual([stored.type, stored.uploaderId, [...stored.bytes]], ['image/png', 'mem_avery', [...png]])
+      }),
+    ),
+  )
+})
