@@ -119,6 +119,16 @@ try {
       await page.waitForTimeout(200)
       await measure(page, '#switcher-panel', `${size.width}×${size.height} /dms: quick switcher`)
     } else failures.push(`${size.width}×${size.height} /dms: Ctrl+K opened nothing`)
+    // The status and profile dialogs on your profile.
+    await page.goto(`${base}/people/mem_avery`)
+    for (const [opener, panel, label] of [['#set-status-button', '#set-status-panel', 'set a status'], ['#edit-profile-button', '#edit-profile-panel', 'edit profile']]) {
+      await page.waitForSelector(opener, { state: 'visible', timeout: TIMEOUT }).catch(() => {})
+      await page.click(opener).catch(() => {})
+      if (await page.waitForSelector(panel, { state: 'visible', timeout: TIMEOUT }).then(() => true, () => false)) await measure(page, panel, `${size.width}×${size.height} /people: ${label}`)
+      else failures.push(`${size.width}×${size.height} /people: ${label} opened nothing`)
+      await page.keyboard.press('Escape')
+      await page.waitForSelector(panel, { state: 'hidden', timeout: TIMEOUT }).catch(() => {})
+    }
     await context.close()
   }
 } finally {

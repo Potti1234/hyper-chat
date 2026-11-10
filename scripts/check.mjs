@@ -8,7 +8,8 @@ import { chromium } from 'playwright'
    DMs, channel management (browse, create, join, topic, members, leave),
    Activity (mentions, filters, opening an item), Mark unread, Saved for
    later (the Later page), pins, search and the
-   Ctrl+K quick switcher.
+   Ctrl+K quick switcher, and People: profiles, custom status and pausing
+   notifications.
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -33,7 +34,7 @@ const live = async (page, go) => {
   await go()
   await stream
   // Pages with key bindings are live once those are in; the others once the stream answered.
-  if (!/\/(channels|activity|later|search)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
+  if (!/\/(channels|activity|later|search|people)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
   else await page.waitForTimeout(300)
   await settle(page)
 }
@@ -236,7 +237,7 @@ try {
   await avery.locator('#later-items li').filter({ hasText: keep }).getByRole('button', { name: 'Remove from Later' }).click()
   check('removing takes it off Later', await until(avery, keep => !document.querySelector('#later-items')?.textContent.includes(keep), keep))
   await avery.click('[data-tab=saved]')
-  await live(avery, () => avery.locator('#later-items li a').first().click())
+  await live(avery, () => avery.locator('#later-items li').first().getByRole('link', { name: 'Open' }).click())
   check('Open goes to the conversation', /^\/client\//.test(new URL(avery.url()).pathname))
   await visit(avery, '/client/ch_general')
 
@@ -363,6 +364,47 @@ try {
   await avery.locator('#switcher-items [role=option]').first().click()
   await avery.waitForURL(/\/client\/dm_/, { timeout: 5000 }).catch(() => {})
   check('a click opens the DM', /\/client\/dm_/.test(avery.url()))
+
+  // People, profiles, custom status and pausing notifications
+  await visit(avery, '/client/ch_general')
+  await live(avery, () => avery.click('#my-profile'))
+  check('your avatar opens your profile', /\/people\/mem_avery/.test(avery.url()) && await until(avery, () => document.querySelector('#profile-name')?.textContent.includes('Avery')))
+  await avery.click('#set-status-button')
+  await until(avery, () => document.querySelector('#preset-1') !== null && document.querySelector('#preset-1').offsetParent !== null)
+  await avery.click('#preset-1')
+  await until(avery, () => document.querySelector('#status-text')?.value === 'Commuting')
+  await avery.click('#save-status-button')
+  check('a preset sets your status', await until(avery, () => document.querySelector('#profile [data-profile-status]')?.textContent.includes('Commuting')))
+  await visit(blake, '/client/ch_general')
+  check('others see the status emoji next to your name', await until(blake, () => document.querySelector('[data-author=mem_avery] + [data-status-emoji]')?.getAttribute('title') === 'Commuting'))
+  await avery.click('[data-pause="30"]')
+  check('pausing notifications shows on your avatar', await until(avery, () => document.querySelector('#my-profile [data-paused]') !== null && document.querySelector('#resume-button') !== null))
+  await avery.click('#resume-button')
+  check('and resuming clears it', await until(avery, () => document.querySelector('#my-profile [data-paused]') === null))
+  await avery.click('#edit-profile-button')
+  await until(avery, () => document.querySelector('#profile-pronouns-input')?.offsetParent != null)
+  await avery.fill('#profile-pronouns-input', 'she/her')
+  await avery.click('#zone-America-New_York')
+  await avery.click('#save-profile-button')
+  check('editing your profile saves pronouns and time zone', await until(avery, () => document.querySelector('#profile-name')?.textContent.includes('she/her') && document.querySelector('#profile')?.textContent.includes('New York')))
+  await avery.click('#clear-status-button')
+  check('Clear status removes it', await until(avery, () => document.querySelector('#profile [data-profile-status]') === null))
+  await visit(blake, '/people')
+  await blake.fill('#people-filter', 'designer')
+  check('the directory filters by title', await until(blake, () => document.querySelectorAll('#people-list [data-person]').length === 1 && document.querySelector('#people-list [data-person=mem_casey]') !== null))
+  await blake.fill('#people-filter', '')
+  await until(blake, () => document.querySelector('#people-list [data-person=mem_avery]') !== null)
+  await live(blake, () => blake.click('#people-list [data-person=mem_avery]'))
+  check('a card opens their profile with local time', await until(blake, () => document.querySelector('#profile')?.textContent.includes('she/her') && document.querySelector('#profile')?.textContent.includes('Local time') && document.querySelector('#edit-profile-button') === null))
+  await live(blake, () => blake.click('#message-person'))
+  check('Message opens a DM with them', /\/(client\/dm_|dms\?to=mem_avery)/.test(blake.url()))
+  await visit(avery, '/people/mem_avery')
+  await avery.click('#edit-profile-button')
+  await until(avery, () => document.querySelector('#profile-pronouns-input')?.offsetParent != null)
+  await avery.fill('#profile-pronouns-input', '')
+  await avery.click('#zone-Europe-Berlin')
+  await avery.click('#save-profile-button')
+  await until(avery, () => !document.querySelector('#profile-name')?.textContent.includes('she/her'))
 
   for (const { errors } of people) for (const error of errors) check('no browser errors', false, error)
 } finally {

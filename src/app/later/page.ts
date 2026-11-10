@@ -14,7 +14,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { messageText } from '../view/message'
+import { authorName, messageText } from '../view/message'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's Later: messages you saved, in progress or completed, newest
@@ -196,7 +196,7 @@ const itemView = (model: Model, item: LaterItem, h: HtmlBuilder<Message>): Html 
               box({ as: 'span', children: [`Saved ${dayLabel(item.at, model.now).toLowerCase()}`] }, h),
             ] }, h),
           box({ class: 'flex items-baseline gap-2', children: [
-              box({ as: 'strong', class: 'text-[15px] font-bold', children: [author?.name ?? 'Former member'] }, h),
+              authorName(author, model.now, h),
               box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(item.message.createdAt, model.now)} at ${formatTime(item.message.createdAt)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: messageText(item.message.text, model.members, h) }, h),
@@ -235,7 +235,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Later - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'later', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
+      region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'later', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
           box({ as: 'main', class: slack.main, children: [

@@ -16,7 +16,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { messageText } from '../view/message'
+import { authorName, messageText } from '../view/message'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, sidebar, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's Threads view: every thread you are part of (you started it,
@@ -248,7 +248,7 @@ const messageView = (model: Model, message: ChatMessage, h: HtmlBuilder<Message>
       box({ class: slack.messageGutter, children: [avatar(author, h, 'md')] }, h),
       box({ class: 'min-w-0 flex-1', children: [
           box({ class: 'flex items-baseline gap-2', children: [
-              box({ as: 'strong', class: 'font-bold', children: [author?.name ?? 'Former member'] }, h),
+              authorName(author, model.now, h),
               box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(message.createdAt, model.now)} at ${formatTime(message.createdAt)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: [
@@ -322,7 +322,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Threads - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
+      region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
           region(h, {

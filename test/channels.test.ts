@@ -107,7 +107,7 @@ describe('channel management', () => {
       const workspace = yield* Workspace
       const state = yield* workspace.current
       const casey = state.members.find(member => member.id === 'mem_casey')!
-      const { model } = channelsInit({ me: casey, rows: channelsOf(state, casey), nav: navOf(state, casey), members: state.members, isCreating: false })
+      const { model } = channelsInit({ me: casey, rows: channelsOf(state, casey), nav: navOf(state, casey), members: state.members, now: 0, isCreating: false })
       assert.notInclude(model.rows.map(row => row.id), 'ch_leads')
       const filtered: ChannelsModel = { ...model, filter: 'eng' }
       assert.deepStrictEqual(shownOf(filtered).map(row => row.name), ['engineering'])
@@ -117,7 +117,7 @@ describe('channel management', () => {
       assert.strictEqual(join.commands?.[0]?.name, 'JoinChannel')
       assert.isUndefined(channelsUpdate(model, { _tag: 'ClickedJoin', channelId: 'ch_leads' }).commands)
       assert.strictEqual(channelsUpdate(model, { _tag: 'ClickedLeave', channelId: 'ch_general' }).model.notice, 'Everyone stays in #general.')
-      const opened = channelsInit({ me: casey, rows: model.rows, nav: model.nav, members: state.members, isCreating: true }).model
+      const opened = channelsInit({ me: casey, rows: model.rows, nav: model.nav, members: state.members, now: 0, isCreating: true }).model
       assert.isTrue(opened.create.isOpen)
       const taken = channelsUpdate({ ...opened, form: { ...opened.form, name: 'Random' } }, { _tag: 'SubmittedCreate' })
       assert.strictEqual(taken.model.notice, '#random already exists. Pick another name.')

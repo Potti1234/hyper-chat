@@ -1,4 +1,4 @@
-import { Effect, Match as M, Schema as S, Stream } from 'effect'
+import { Clock, Effect, Match as M, Schema as S, Stream } from 'effect'
 import { Command, Subscription, type Update } from 'foldkit'
 import type { Document, Html, HtmlBuilder } from 'foldkit/html'
 import { defineMessageUnion } from 'foldkit/message'
@@ -42,6 +42,7 @@ export const Model = S.Struct({
   me: Member,
   rows: S.Array(ChannelRow),
   nav: Nav,
+  now: S.Number,
   switcher: Switcher,
   members: S.Array(Member),
   collapsed: S.Array(S.String),
@@ -72,7 +73,7 @@ export const Message = defineMessageUnion({
   ClickedToggleTheme: {},
   ClickedToggleSection: { section: S.String },
   ClickedDismissNotice: {},
-  GotChannels: { rows: S.Array(ChannelRow), nav: Nav, members: S.Array(Member), me: Member },
+  GotChannels: { rows: S.Array(ChannelRow), nav: Nav, members: S.Array(Member), me: Member, now: S.Number },
   CreatedChannel: { channelId: S.String },
   FailedChange: { reason: S.String },
   CompletedChange: {},
@@ -158,7 +159,7 @@ export const shownOf = (model: Pick<Model, 'rows' | 'filter' | 'show'>): Readonl
 
 // INIT
 
-export type Flags = Readonly<{ me: Member; rows: ReadonlyArray<ChannelRow>; nav: Nav; members: ReadonlyArray<Member>; isCreating: boolean }>
+export type Flags = Readonly<{ me: Member; rows: ReadonlyArray<ChannelRow>; nav: Nav; members: ReadonlyArray<Member>; now: number; isCreating: boolean }>
 
 const emptyForm = { name: '', description: '', isPrivate: false, isSaving: false }
 
@@ -249,7 +250,7 @@ export const subscriptions = Subscription.make<Model, Message, Workspace>()(entr
                 Stream.map(state => sliceOf(state, memberId)),
                 Stream.changesWith(sameSlice),
                 Stream.filter((slice): slice is Slice & { me: Member } => slice.me !== null),
-                Stream.map(slice => Message.GotChannels(slice)),
+                Stream.mapEffect(slice => Effect.map(Clock.currentTimeMillis, now => Message.GotChannels({ ...slice, now }))),
               ),
             ),
           ),
@@ -330,7 +331,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `All channels - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
+      region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
           region(h, { id: 'sidebar', deps: [model.nav, model.members, model.collapsed], render: () => sidebar({ nav: model.nav, members: model.members, activeId: 'channels', collapsed: model.collapsed, onToggleSection: section => Message.ClickedToggleSection({ section }) }, h) }),
@@ -369,7 +370,8 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
       const me = yield* requireMember(request)
       const state = yield* Workspace.use(workspace => workspace.current)
       // `/channels?new` opens "Create a channel" (the sidebar's Add channels).
-      return { me, rows: channelsOf(state, me), nav: navOf(state, me), members: state.members, isCreating: request.url.searchParams.has('new') }
+      const now = yield* Clock.currentTimeMillis
+      return { me, rows: channelsOf(state, me), nav: navOf(state, me), members: state.members, now, isCreating: request.url.searchParams.has('new') }
     }),
   init,
   update,

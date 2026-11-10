@@ -8,6 +8,7 @@ import { input } from '@/ui/input'
 
 import { activityOf, unseenCount } from '../activity'
 import { ACTIVITY_READ, type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, mentions, readAt } from '../domain'
+import { isPaused } from '../profile'
 import type { WorkspaceState } from '../store'
 import { box, slack } from './design'
 import { avatar, workspaceIcon } from './icons'
@@ -71,10 +72,11 @@ export const hasUnread = (nav: Nav): boolean => [...nav.channels, ...nav.dms].so
 
 // RAIL
 
-export type RailItem = 'home' | 'dms' | 'activity' | 'later' | 'search'
+export type RailItem = 'home' | 'dms' | 'activity' | 'later' | 'search' | 'people'
 
 type RailProps<Msg> = Readonly<{
   me: Member
+  now: number
   active: RailItem
   onToggleTheme: Msg
   nav: Nav
@@ -99,12 +101,18 @@ export const rail = <Msg>(props: RailProps<Msg>, h: HtmlBuilder<Msg>): Html =>
       railLink({ href: '/dms', label: 'DMs', icon: Icon.icon('messages-square', {}, h), isActive: props.active === 'dms' }, h),
       railLink({ href: '/activity', label: 'Activity', icon: Icon.icon('bell', {}, h), isActive: props.active === 'activity', count: props.active === 'activity' ? 0 : props.nav.activity }, h),
       railLink({ href: '/later', label: 'Later', icon: Icon.bookmark({}, h), isActive: props.active === 'later' }, h),
+      railLink({ href: '/people', label: 'People', icon: Icon.users({}, h), isActive: props.active === 'people' }, h),
       box({ class: 'flex-1' }, h),
       button({ variant: 'sidebar-icon', size: 'icon', ariaLabel: props.me.isDark ? 'Light mode' : 'Dark mode', title: props.me.isDark ? 'Light mode' : 'Dark mode', onClick: props.onToggleTheme, children: [Icon.icon(props.me.isDark ? 'sun' : 'moon', {}, h)] }, h),
       box({ as: 'form', attributes: [h.Method('post'), h.Action('/logout')], children: [
           button({ variant: 'sidebar-icon', size: 'icon', type: 'submit', ariaLabel: 'Sign out', title: 'Sign out', children: [Icon.icon('log-out', {}, h)] }, h),
         ] }, h),
-      box({ as: 'span', class: 'relative mt-1', attributes: [h.Title(props.me.name)], children: [avatar(props.me, h, 'md'), box({ as: 'span', class: slack.presenceDot, attributes: [h.AriaLabel('Active')] }, h)] }, h),
+      box({ as: 'a', class: 'relative mt-1', attributes: [h.Id('my-profile'), h.Href(`/people/${props.me.id}`), h.Title(`${props.me.name}: your profile and status`)], children: [
+          avatar(props.me, h, 'md'),
+          isPaused(props.me, props.now)
+            ? box({ as: 'span', class: slack.pausedBadge, attributes: [h.AriaLabel('Notifications paused'), h.DataAttribute('paused', '')], children: [Icon.icon('moon', {}, h)] }, h)
+            : box({ as: 'span', class: slack.presenceDot, attributes: [h.AriaLabel('Active')] }, h),
+        ] }, h),
     ] }, h)
 
 // TOP BAR

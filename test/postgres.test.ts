@@ -42,8 +42,11 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         yield* one.toggleSaved(message.id, 'mem_casey')
         yield* one.setSavedState(message.id, 'mem_casey', 'done')
         yield* one.togglePin(message.id, 'mem_blake')
+        yield* one.updateProfile('mem_casey', { name: 'Casey Lindqvist', title: 'Design Lead', pronouns: 'they/them', timeZone: 'Asia/Tokyo' })
+        yield* one.setStatus('mem_casey', { emoji: '', text: 'Sketching', until: 0 })
+        yield* one.setPaused('mem_casey', Date.now() + 3_600_000)
         yield* two.changes.pipe(
-          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1 && item.pinnedBy === 'mem_blake') && state.saves.some(saved => saved.messageId === message.id && saved.state === 'done') && state.messages.some(item => item.id === reply.id)),
+          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1 && item.pinnedBy === 'mem_blake') && state.saves.some(saved => saved.messageId === message.id && saved.state === 'done') && state.messages.some(item => item.id === reply.id) && state.members.some(member => member.id === 'mem_casey' && member.pausedUntil !== undefined)),
           Stream.runHead,
           Effect.timeout('5 seconds'),
         )
@@ -54,6 +57,9 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         assert.isTrue(after.reads.some(read => read.memberId === 'mem_casey' && read.channelId === 'ch_general'))
         const restarted = yield* (yield* store).current
         assert.strictEqual(restarted.messages.find(item => item.id === message.id)?.pinnedBy, 'mem_blake')
+        const casey = restarted.members.find(member => member.id === 'mem_casey')
+        assert.deepStrictEqual([casey?.title, casey?.pronouns, casey?.timeZone, casey?.status?.text], ['Design Lead', 'they/them', 'Asia/Tokyo', 'Sketching'])
+        assert.isAbove(casey?.pausedUntil ?? 0, 0)
         assert.isTrue(restarted.saves.some(saved => saved.memberId === 'mem_casey' && saved.messageId === message.id && saved.state === 'done'))
         yield* one.deleteMessage(message.id, 'mem_avery')
         yield* two.changes.pipe(Stream.filter(state => !state.messages.some(item => item.id === message.id || item.id === reply.id)), Stream.runHead, Effect.timeout('5 seconds'))

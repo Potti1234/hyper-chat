@@ -11,6 +11,7 @@ import {
   type NewChannelInput,
   type Op,
   type PostOptions,
+  type ProfileInput,
   type WorkspaceData,
   addDemo,
   addMember,
@@ -35,6 +36,9 @@ import {
   postMessage,
   setPreset,
   setTheme,
+  setPaused,
+  setStatus,
+  updateProfile,
 } from './workspace'
 
 export { InvalidChange } from './workspace'
@@ -84,6 +88,9 @@ export class Workspace extends Context.Service<
     readonly addMember: (input: NewAccount) => Effect.Effect<Member, InvalidChange>
     readonly setTheme: (memberId: string, isDark: boolean) => Effect.Effect<void>
     readonly setPreset: (memberId: string, theme: string) => Effect.Effect<void>
+    readonly updateProfile: (memberId: string, input: ProfileInput) => Effect.Effect<Member, InvalidChange>
+    readonly setStatus: (memberId: string, input: Readonly<{ emoji: string; text: string; until: number }>) => Effect.Effect<void, InvalidChange>
+    readonly setPaused: (memberId: string, until: number) => Effect.Effect<void>
     /** The direct message with these people, started if there is none. */
     readonly createChannel: (input: NewChannelInput, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly joinChannel: (channelId: string, actorId: string) => Effect.Effect<Channel, InvalidChange>
@@ -128,6 +135,9 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
     }),
   setTheme: (memberId, isDark) => backend.run(setTheme(memberId, isDark)),
   setPreset: (memberId, theme) => backend.run(setPreset(memberId, theme)),
+  updateProfile: (memberId, input) => backend.run(updateProfile(memberId, input)),
+  setStatus: (memberId, input) => backend.run(setStatus(memberId, input)),
+  setPaused: (memberId, until) => backend.run(setPaused(memberId, until)),
   createChannel: (input, actorId) => backend.run(createChannel(input, actorId)),
   joinChannel: (channelId, actorId) => backend.run(joinChannel(channelId, actorId)),
   leaveChannel: (channelId, actorId) => backend.run(leaveChannel(channelId, actorId)),

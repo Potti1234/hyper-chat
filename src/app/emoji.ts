@@ -10,6 +10,7 @@ const list = (group: EmojiGroup, entries: ReadonlyArray<readonly [string, string
 
 export const EMOJI: ReadonlyArray<Emoji> = [
   ...list('Smileys & People', [
+    ['🤒', 'face_with_thermometer', 'sick ill'],
     ['😀', 'grinning', 'smile happy'],
     ['😄', 'smile', 'happy joy'],
     ['😂', 'joy', 'laugh tears lol'],
@@ -40,6 +41,7 @@ export const EMOJI: ReadonlyArray<Emoji> = [
     ['🫡', 'saluting_face', 'salute'],
   ]),
   ...list('Nature', [
+    ['🌴', 'palm_tree', 'vacation holiday beach'],
     ['🔥', 'fire', 'lit hot'],
     ['⭐', 'star'],
     ['🌟', 'star2', 'glow'],
@@ -65,6 +67,8 @@ export const EMOJI: ReadonlyArray<Emoji> = [
     ['🎨', 'art', 'design'],
   ]),
   ...list('Objects', [
+    ['🚌', 'bus', 'commute travel'],
+    ['🏡', 'house_with_garden', 'home remote'],
     ['📈', 'chart_with_upwards_trend', 'growth metrics up'],
     ['🚀', 'rocket', 'ship launch'],
     ['💡', 'bulb', 'idea'],
@@ -92,6 +96,21 @@ const BY_GLYPH = new Map(EMOJI.map(emoji => [emoji.glyph, emoji]))
 export const isEmoji = (glyph: string): boolean => BY_GLYPH.has(glyph)
 
 export const emojiName = (glyph: string): string => BY_GLYPH.get(glyph)?.name ?? glyph
+
+/** The emoji a status gets when it has only text. */
+export const STATUS_EMOJI = '💬'
+
+/** The emoji a status can pick from. */
+export const STATUS_CHOICES: ReadonlyArray<string> = ['💬', '📅', '🚌', '🤒', '🌴', '🏡', '☕', '🍕', '🎯', '🚀', '💡', '📝', '🎉', '😴', '🤔', '🔥']
+
+/** Slack's suggested statuses: emoji, text and how long they last. */
+export const STATUS_PRESETS: ReadonlyArray<readonly [emoji: string, text: string, clearAfter: 'never' | '30m' | '1h' | 'today']> = [
+  ['📅', 'In a meeting', '1h'],
+  ['🚌', 'Commuting', '30m'],
+  ['🤒', 'Out sick', 'today'],
+  ['🌴', 'Vacationing', 'never'],
+  ['🏡', 'Working remotely', 'today'],
+]
 
 /** Slack's one-click reactions on a message's hover toolbar. */
 export const QUICK_REACTIONS: ReadonlyArray<string> = ['✅', '👀', '🙌']

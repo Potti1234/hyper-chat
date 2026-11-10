@@ -2,7 +2,8 @@ import { Data, Effect } from 'effect'
 
 import { activityOf } from './activity'
 import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Read, type Saved, type SavedState, canRead, channelSlug, inChannel, isMemberOf } from './domain'
-import { isEmoji } from './emoji'
+import { STATUS_EMOJI, isEmoji } from './emoji'
+import { MAX_NAME, MAX_PRONOUNS, MAX_STATUS, MAX_TITLE, isTimeZone } from './profile'
 
 /* The workspace's data and every change to it, as pure operations: an
    operation takes the data (and the time and an id source) and returns its
@@ -73,6 +74,13 @@ const updateMember = (data: WorkspaceData, memberId: string, patch: Partial<Memb
   return (Object.keys(patch) as ReadonlyArray<keyof Member>).every(key => member[key] === next[key]) ? data : { ...data, members: replace(data.members, next) }
 }
 
+const clearMember = (data: WorkspaceData, memberId: string, key: 'status' | 'pausedUntil'): WorkspaceData => {
+  const member = data.members.find(candidate => candidate.id === memberId)
+  if (member === undefined || member[key] === undefined) return data
+  const { [key]: _cleared, ...rest } = member
+  return { ...data, members: replace(data.members, rest) }
+}
+
 export const setTheme =
   (memberId: string, isDark: boolean): Op<void> =>
   data =>
@@ -82,6 +90,44 @@ export const setPreset =
   (memberId: string, theme: string): Op<void> =>
   data =>
     unchanged(undefined, updateMember(data, memberId, { theme }))
+
+export type ProfileInput = Readonly<{ name: string; title: string; pronouns: string; timeZone: string }>
+
+export const updateProfile =
+  (memberId: string, input: ProfileInput): Op<Member, InvalidChange> =>
+  data => {
+    const member = data.members.find(candidate => candidate.id === memberId)
+    if (member === undefined) return invalid('Unknown member.')
+    const name = input.name.trim().replace(/\s+/g, ' ')
+    const title = input.title.trim()
+    const pronouns = input.pronouns.trim()
+    if (name === '') return invalid('Your full name can’t be empty.')
+    if (name.length > MAX_NAME) return invalid(`Keep your name to ${MAX_NAME} characters.`)
+    if (title.length > MAX_TITLE) return invalid(`Keep your title to ${MAX_TITLE} characters.`)
+    if (pronouns.length > MAX_PRONOUNS) return invalid(`Keep pronouns to ${MAX_PRONOUNS} characters.`)
+    if (!isTimeZone(input.timeZone)) return invalid('Pick a time zone from the list.')
+    const next = updateMember(data, memberId, { name, title, pronouns, timeZone: input.timeZone })
+    return Effect.succeed([next.members.find(candidate => candidate.id === memberId) ?? member, next] as const)
+  }
+
+/** Sets a custom status, or clears it when both emoji and text are empty. A
+ *  text without an emoji gets Slack's speech bubble. */
+export const setStatus =
+  (memberId: string, input: Readonly<{ emoji: string; text: string; until: number }>): Op<void, InvalidChange> =>
+  (data, { at }) => {
+    const text = input.text.trim()
+    if (text.length > MAX_STATUS) return invalid(`Keep your status to ${MAX_STATUS} characters.`)
+    if (input.emoji !== '' && !isEmoji(input.emoji)) return invalid('Pick an emoji from the list.')
+    if (input.until !== 0 && input.until <= at) return invalid('That time has passed.')
+    if (text === '' && input.emoji === '') return unchanged(undefined, clearMember(data, memberId, 'status'))
+    return unchanged(undefined, updateMember(data, memberId, { status: { emoji: input.emoji === '' ? STATUS_EMOJI : input.emoji, text, until: input.until } }))
+  }
+
+/** Pauses notifications until then; 0 (or a moment past) resumes them. */
+export const setPaused =
+  (memberId: string, until: number): Op<void> =>
+  (data, { at }) =>
+    unchanged(undefined, until <= at ? clearMember(data, memberId, 'pausedUntil') : updateMember(data, memberId, { pausedUntil: until }))
 
 // CONVERSATIONS
 

@@ -16,7 +16,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { messageText } from '../view/message'
+import { authorName, messageText } from '../view/message'
 import { Nav, WORKSPACE_NAME, emptyNav, hasUnread, navOf, rail, sameNav, topBar } from '../view/shell'
 
 /* Slack's search results: the query in the top bar, results as you type in
@@ -174,7 +174,7 @@ const messageHit = (model: Model, hit: MessageHit, h: HtmlBuilder<Message>): Htm
       box({ class: 'flex min-w-0 flex-1 flex-col gap-0.5', children: [
           box({ class: 'text-[12px] font-semibold text-muted-foreground', children: [hit.message.threadId === null ? placeOf(hit.channelKind, hit.conversation) : `Thread in ${placeOf(hit.channelKind, hit.conversation)}`] }, h),
           box({ class: 'flex items-baseline gap-2', children: [
-              box({ as: 'strong', class: 'text-[15px] font-bold', children: [author?.name ?? 'Former member'] }, h),
+              authorName(author, model.now, h),
               box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(hit.message.createdAt, model.now)} at ${formatTime(hit.message.createdAt)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: messageText(hit.message.text, model.members, h) }, h),
@@ -249,7 +249,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${model.query.trim() === '' ? 'Search' : `${model.query.trim()} - Search`} - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'search', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
+      region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'search', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           region(h, { id: 'top-bar', deps: [model.query], render: () => topBar({ search: { value: model.query, onInput: text => Message.ChangedQuery({ text }) } }, h) }),
           box({ as: 'main', class: slack.main, children: [

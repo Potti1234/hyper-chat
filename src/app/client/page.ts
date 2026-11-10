@@ -20,7 +20,7 @@ import { Workspace, type WorkspaceState } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { messageText } from '../view/message'
+import { authorName, messageText } from '../view/message'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, sidebar, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* A conversation (channel or direct message), Slack's main view: the frame
@@ -911,7 +911,7 @@ const messageView = (model: Model, message: ChatMessage, isFirst: boolean, where
       box({ class: 'min-w-0 flex-1', children: [
           ...(where === 'channel' && message.threadId !== null ? [repliedToView(model, message, h)] : []),
           ...(isFirst
-            ? [box({ class: 'flex items-baseline gap-2', children: [box({ as: 'strong', class: 'font-bold', children: [author?.name ?? 'Former member'] }, h), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [formatTime(message.createdAt)] }, h)] }, h)]
+            ? [box({ class: 'flex items-baseline gap-2', children: [authorName(author, model.now, h), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [formatTime(message.createdAt)] }, h)] }, h)]
             : []),
           ...(editing !== null
             ? [editView(editing, h)]
@@ -1022,7 +1022,7 @@ const pinsTab = (model: Model, h: HtmlBuilder<Message>): Html =>
           return box({ as: 'li', class: 'flex gap-2 rounded-lg border p-3', attributes: [h.DataAttribute('pin', pin.id)], children: [
               avatar(author, h, 'md'),
               box({ class: 'min-w-0 flex-1', children: [
-                  box({ class: 'flex items-baseline gap-2', children: [box({ as: 'strong', class: 'text-[14px] font-bold', children: [author?.name ?? 'Former member'] }, h), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(pin.createdAt, model.now)} at ${formatTime(pin.createdAt)}`] }, h)] }, h),
+                  box({ class: 'flex items-baseline gap-2', children: [authorName(author, model.now, h, 'text-[14px]'), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(pin.createdAt, model.now)} at ${formatTime(pin.createdAt)}`] }, h)] }, h),
                   box({ class: slack.messageText, children: messageText(pin.text, model.members, h) }, h),
                 ] }, h),
               ...(canWrite(model) ? [button({ variant: 'ghost', size: 'icon-sm', ariaLabel: 'Un-pin', title: 'Un-pin', onClick: Message.ClickedPin({ messageId: pin.id }), children: [Icon.icon('x', {}, h)] }, h)] : []),
@@ -1246,7 +1246,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${model.channel === null || model.channel.kind === 'dm' ? '' : '#'}${titleOf(model)} - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
-      region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
+      region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
           region(h, {

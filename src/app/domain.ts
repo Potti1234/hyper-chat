@@ -6,6 +6,10 @@ import { Schema as S, SchemaIssue } from 'effect'
 
 // MEMBERS
 
+/** A custom status: an emoji and a short text, cleared at `until` (0: kept until changed). */
+export const Status = S.Struct({ emoji: S.String, text: S.String, until: S.Number })
+export type Status = typeof Status.Type
+
 export const Member = S.Struct({
   id: S.String,
   name: S.String,
@@ -21,6 +25,12 @@ export const Member = S.Struct({
   theme: S.String,
   /** Entered by the demo script (`npm run demo:seed`); `demo:clear` removes it. */
   isDemo: S.Boolean,
+  pronouns: S.optionalKey(S.String),
+  /** An IANA zone from TIME_ZONES, for the local time on their profile. */
+  timeZone: S.optionalKey(S.String),
+  status: S.optionalKey(Status),
+  /** Notifications paused until then (Slack's "Pause notifications"). */
+  pausedUntil: S.optionalKey(S.Number),
 })
 export type Member = typeof Member.Type
 
