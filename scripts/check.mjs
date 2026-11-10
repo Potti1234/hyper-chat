@@ -9,7 +9,7 @@ import { chromium } from 'playwright'
    Activity (mentions, filters, opening an item), Mark unread, Saved for
    later (the Later page), pins, search and the
    Ctrl+K quick switcher, People: profiles, custom status and pausing
-   notifications, Preferences, formatting and files.
+   notifications, Preferences, formatting, files and typing.
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -183,6 +183,21 @@ try {
   const download = await blake.evaluate(() => [...document.querySelectorAll('#message-list [data-attachment][download]')].find(link => link.getAttribute('download') === 'page.html')?.getAttribute('href'))
   const html = await blake.request.get(`${base}${download}`)
   check('a non-image downloads as bytes, never as a page', html.headers()['content-type'] === 'application/octet-stream' && html.headers()['content-disposition']?.startsWith('attachment') === true)
+
+  // Typing: the others see who is typing until they send or clear the draft.
+  await blake.click('#composer')
+  await blake.keyboard.type('Thinking about it')
+  check('typing shows for the others', await until(avery, () => document.querySelector('#typing [data-typing-names]')?.textContent === 'Blake Okafor is typing…'))
+  check('you do not see yourself typing', await until(blake, () => document.querySelector('#typing [data-typing-names]') === null))
+  await blake.keyboard.press('Enter')
+  check('sending ends the typing line', await until(avery, () => document.querySelector('#typing [data-typing-names]') === null))
+  await until(blake, () => document.querySelector('#composer')?.value === '')
+  await settle(blake)
+  await blake.keyboard.type('One more')
+  check('typing shows again', await until(avery, () => document.querySelector('#typing [data-typing-names]') !== null))
+  await blake.keyboard.press('Control+A')
+  await blake.keyboard.press('Backspace')
+  check('clearing the draft ends it', await until(avery, () => document.querySelector('#typing [data-typing-names]') === null))
 
   // Threads
   await visit(avery, '/client/ch_general')

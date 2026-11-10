@@ -5,6 +5,7 @@ import { Clock, Context, Effect, Layer, type Scope, Semaphore, Stream, Subscript
 import type { Channel, Member, Message, Preferences, Read, Saved, SavedState } from './domain'
 import { hashPassword, verifyPassword } from './password'
 import { type Presence, memoryPresence, sameIds } from './presence'
+import { type Typing, type Typist, memoryTyping } from './typing'
 import {
   type ChannelDetails,
   type DemoCounts,
@@ -80,6 +81,7 @@ export type Backend = Readonly<{
   /** Runs an operation atomically and makes its result the new state. */
   run: <A, E>(op: Op<A, E>) => Effect.Effect<A, E>
   presence: Presence
+  typing: Typing
 }>
 
 export type NewAccount = Readonly<{ name: string; email: string; password: string }>
@@ -91,6 +93,9 @@ export class Workspace extends Context.Service<
     readonly changes: Stream.Stream<WorkspaceState>
     /** Shows the member as active until the scope closes. */
     readonly connect: (memberId: string) => Effect.Effect<void, never, Scope.Scope>
+    /** Who is typing where (typing.ts); not part of `changes`. */
+    readonly typing: Stream.Stream<ReadonlyArray<Typist>>
+    readonly setTyping: (memberId: string, channelId: string, isTyping: boolean) => Effect.Effect<void>
     readonly member: (id: string) => Effect.Effect<Member | undefined>
     /** The member with this email and password. */
     readonly authenticate: (email: string, password: string) => Effect.Effect<Member | undefined>
@@ -130,6 +135,8 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
   current: Effect.zipWith(backend.current, backend.presence.online, (snapshot, online) => ({ ...snapshot.state, online })),
   changes: Stream.zipLatestWith(backend.changes, Stream.changesWith(backend.presence.changes, sameIds), (snapshot, online) => ({ ...snapshot.state, online })),
   connect: backend.presence.connect,
+  typing: backend.typing.changes,
+  setTyping: backend.typing.set,
   member: id => Effect.map(backend.current, ({ data }) => data.members.find(member => member.id === id)),
   authenticate: (email, password) =>
     Effect.gen(function* () {
@@ -175,13 +182,15 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
 /** Ids that are unique across processes and restarts. */
 export const newId = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, '').slice(0, 16)}`
 
-export const memoryBackend = (initial: WorkspaceData): Effect.Effect<Backend> =>
+export const memoryBackend = (initial: WorkspaceData): Effect.Effect<Backend, never, Scope.Scope> =>
   Effect.gen(function* () {
     const ref = yield* SubscriptionRef.make(snapshotOf(1, initial))
     const lock = yield* Semaphore.make(1)
     const presence = yield* memoryPresence
+    const typing = yield* memoryTyping
     return {
       presence,
+      typing,
       current: SubscriptionRef.get(ref),
       changes: SubscriptionRef.changes(ref),
       run: op =>

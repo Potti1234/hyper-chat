@@ -20,6 +20,8 @@ import { Files, MAX_FILE_BYTES } from '../files'
 import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, preferencesOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
+import { sameIds } from '../presence'
+import { typingIn } from '../typing'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { formatBar } from '../view/composer'
 import { box, optionRow, pageRoot, slack } from '../view/design'
@@ -79,6 +81,8 @@ export const Model = S.Struct({
   uploads: S.Array(Attachment),
   /** Files still being stored. */
   uploading: S.Number,
+  /** Who else is typing here, by id. */
+  typing: S.Array(S.String),
   isConnected: S.Boolean,
   isSending: S.Boolean,
   notice: S.NullOr(S.String),
@@ -118,6 +122,7 @@ export const Message = defineMessageUnion({
   StoredFile: { file: Attachment },
   RejectedFile: { reason: S.String },
   ClickedRemoveUpload: { id: S.String },
+  GotTyping: { memberIds: S.Array(S.String) },
   SubmittedDraft: {},
   PressedEnter: { targetId: S.String },
   GotSwitcher: { event: SwitcherEvent },
@@ -226,11 +231,17 @@ export const StoreFile = Command.define('StoreFile', {
     ),
 })
 
+export const SignalTyping = Command.define('SignalTyping', {
+  args: { channelId: S.String, memberId: S.String, isTyping: S.Boolean },
+  messages: [Message.CompletedChange],
+  execute: ({ channelId, memberId, isTyping }) => Workspace.use(workspace => workspace.setTyping(memberId, channelId, isTyping)).pipe(Effect.as(Message.CompletedChange())),
+})
+
 export const SendMessage = Command.define('SendMessage', {
   args: { channelId: S.String, text: S.String, files: S.Array(Attachment), actorId: S.String },
   messages: [Message.SucceededSend, Message.FailedChange],
   execute: ({ channelId, text, files, actorId }) =>
-    Workspace.use(workspace => workspace.postMessage(channelId, text, actorId, { files })).pipe(
+    Workspace.use(workspace => Effect.tap(workspace.postMessage(channelId, text, actorId, { files }), () => workspace.setTyping(actorId, channelId, false))).pipe(
       Effect.as(Message.SucceededSend()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
@@ -420,6 +431,7 @@ export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Messag
     draft: '',
     uploads: [],
     uploading: 0,
+    typing: [],
     isConnected: false,
     isSending: false,
     notice: null,
@@ -457,6 +469,14 @@ const send = (model: Model): UpdateReturn => {
   if (!canWrite(model)) return { model: { ...model, notice: 'Join this channel to write in it.' } }
   if (text.length > MAX_MESSAGE) return { model: { ...model, notice: `Keep messages under ${MAX_MESSAGE} characters.` } }
   return { model: { ...model, isSending: true }, commands: [SendMessage({ channelId: model.channelId, text, files: model.uploads, actorId: model.me.id })] }
+}
+
+/** The draft, and telling the others whether you are typing. */
+const changeDraft = (model: Model, text: string): UpdateReturn => {
+  const next = { ...model, draft: text.slice(0, MAX_MESSAGE + 100) }
+  const isTyping = next.draft.trim() !== ''
+  if (!canWrite(model) || (!isTyping && model.draft.trim() === '')) return { model: next }
+  return { model: next, commands: [SignalTyping({ channelId: model.channelId, memberId: model.me.id, isTyping })] }
 }
 
 /** Stores chosen or dropped files for the next message, one Command each. */
@@ -594,7 +614,8 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
   M.value(message).pipe(
     M.withReturnType<UpdateReturn>(),
     M.tagsExhaustive({
-      ChangedDraft: ({ text }) => ({ model: { ...model, draft: text.slice(0, MAX_MESSAGE + 100) } }),
+      ChangedDraft: ({ text }) => changeDraft(model, text),
+      GotTyping: ({ memberIds }) => ({ model: sameIds(memberIds, model.typing) ? model : { ...model, typing: memberIds } }),
       ChoseFiles: ({ files }) => chooseFiles(model, files),
       StoredFile: ({ file }) => ({ model: { ...model, uploading: Math.max(0, model.uploading - 1), uploads: [...model.uploads, file] } }),
       RejectedFile: ({ reason }) => ({ model: { ...model, uploading: Math.max(0, model.uploading - 1), notice: reason } }),
@@ -775,6 +796,18 @@ export const subscriptions = Subscription.make<Model, Message, Workspace>()(entr
   presence: entry(
     { memberId: S.String, isConnected: S.Boolean },
     { modelToDependencies: model => ({ memberId: model.me.id, isConnected: model.isConnected }), dependenciesToStream: ({ memberId, isConnected }) => presenceWhile(memberId, isConnected) },
+  ),
+  typing: entry(
+    { channelId: S.String, memberId: S.String },
+    {
+      modelToDependencies: model => ({ channelId: model.channelId, memberId: model.me.id }),
+      dependenciesToStream: ({ channelId, memberId }) =>
+        Stream.unwrap(Workspace.use(workspace => Effect.succeed(workspace.typing.pipe(
+          Stream.map(typists => typingIn(typists, channelId, memberId)),
+          Stream.changesWith(sameIds),
+          Stream.map(memberIds => Message.GotTyping({ memberIds })),
+        )))),
+    },
   ),
   channel: entry(
     { channelId: S.String, memberId: S.String },
@@ -1291,6 +1324,19 @@ const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
           ] }, h),
     ] }, h)
 
+/** "Blake is typing…", as Slack words it. */
+export const typingText = (names: ReadonlyArray<string>): string => {
+  const [first, second] = names
+  if (first === undefined) return ''
+  if (second === undefined) return `${first} is typing…`
+  return names.length === 2 ? `${first} and ${second} are typing…` : 'Several people are typing…'
+}
+
+const typingView = (model: Model, h: HtmlBuilder<Message>): Html => {
+  const names = model.typing.map(id => model.members.find(member => member.id === id)?.name ?? 'Someone')
+  return box({ class: '-mt-[19px] min-h-[19px] shrink-0 truncate px-5 text-[12px] leading-[18px] text-muted-foreground', attributes: [h.Id('typing'), h.AriaLive('polite')], children: names.length === 0 ? [] : [box({ as: 'strong', class: 'font-bold', attributes: [h.DataAttribute('typing-names', '')], children: [typingText(names)] }, h)] }, h)
+}
+
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${model.channel === null || model.channel.kind === 'dm' ? '' : '#'}${titleOf(model)} - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, preferences: model.me.preferences, children: [
@@ -1307,6 +1353,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
               region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id, model.pins.length], render: () => headerView(model, h) }),
               region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id, model.saved, model.pins, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
               region(h, { id: 'composer-area', deps: [model.draft, model.uploads, model.uploading, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
+              region(h, { id: 'typing', deps: [model.typing, model.members], render: () => typingView(model, h) }),
             ] }, h),
           region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now, model.saved, model.me.timeZone, model.me.preferences], render: () => threadView(model, h) }),
         ] }, h),

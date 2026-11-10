@@ -6,6 +6,7 @@ import { SqlClient, SqlError } from 'effect/sql'
 
 import { Channel, Member, Message, Read, Saved } from './domain'
 import { type Presence, localConnections, sameIds } from './presence'
+import { type Typing, decodeEvent, localTyping } from './typing'
 import { type Backend, type Snapshot, Workspace, fromBackend, newId, snapshotOf } from './store'
 import type { WorkspaceData } from './workspace'
 
@@ -29,6 +30,7 @@ import type { WorkspaceData } from './workspace'
 const CHANNEL = 'hyperchat_changes'
 const LOCK = 7411
 const PRESENCE_CHANNEL = 'hyperchat_presence'
+const TYPING_CHANNEL = 'hyperchat_typing'
 const HEARTBEAT = '20 seconds'
 const STALE_MS = 60_000
 
@@ -181,6 +183,24 @@ const postgresPresence = (sql: Sql, pg: PgClient.PgClient, instance: string): Ef
     return { online: SubscriptionRef.get(ref), changes: SubscriptionRef.changes(ref), connect }
   })
 
+/** Typing across every process: events go out by NOTIFY and come back to
+ *  each listener, this one included. */
+const postgresTyping = (sql: Sql, pg: PgClient.PgClient): Effect.Effect<Typing, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const notifications = yield* pg.listen(TYPING_CHANNEL).pipe(Effect.orDie)
+    const typing = yield* localTyping(event => Effect.ignore(sql`SELECT pg_notify(${TYPING_CHANNEL}, ${JSON.stringify(event)})`, { log: 'Warn', message: 'typing' }))
+    yield* Queue.take(notifications).pipe(
+      Effect.orDie,
+      Effect.flatMap(notification => {
+        const event = decodeEvent(notification.payload)
+        return event === undefined ? Effect.void : typing.receive(event)
+      }),
+      Effect.forever,
+      Effect.forkScoped,
+    )
+    return typing
+  })
+
 export const postgresBackend: Effect.Effect<Backend, never, SqlClient.SqlClient | PgClient.PgClient | Scope.Scope> =
   Effect.gen(function* () {
     const sql = (yield* SqlClient.SqlClient).withoutTransforms()
@@ -198,6 +218,7 @@ export const postgresBackend: Effect.Effect<Backend, never, SqlClient.SqlClient 
     // Tells this process's own notifications from the others'.
     const instance = randomUUID()
     const presence = yield* postgresPresence(sql, pg, instance)
+    const typing = yield* postgresTyping(sql, pg)
 
     yield* Queue.takeAll(notifications).pipe(
       Effect.orDie,
@@ -218,6 +239,7 @@ export const postgresBackend: Effect.Effect<Backend, never, SqlClient.SqlClient 
 
     return {
       presence,
+      typing,
       current: SubscriptionRef.get(ref),
       changes: SubscriptionRef.changes(ref),
       run: op =>
