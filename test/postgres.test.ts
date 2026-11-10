@@ -50,8 +50,9 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         yield* one.setPaused('mem_casey', Date.now() + 3_600_000)
         yield* one.setPreferences('mem_casey', { sidebar: 'lagoon', isCompact: true, is24Hour: true })
         yield* one.setMuted('mem_casey', 'ch_general', true)
+        yield* one.setStarred('mem_casey', 'ch_general', true)
         yield* two.changes.pipe(
-          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1 && item.pinnedBy === 'mem_blake') && state.saves.some(saved => saved.messageId === message.id && saved.state === 'done') && state.messages.some(item => item.id === reply.id) && state.members.some(member => member.id === 'mem_casey' && member.pausedUntil !== undefined && member.preferences?.sidebar === 'lagoon' && member.muted?.includes('ch_general') === true)),
+          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1 && item.pinnedBy === 'mem_blake') && state.saves.some(saved => saved.messageId === message.id && saved.state === 'done') && state.messages.some(item => item.id === reply.id) && state.members.some(member => member.id === 'mem_casey' && member.pausedUntil !== undefined && member.preferences?.sidebar === 'lagoon' && member.muted?.includes('ch_general') === true && member.starred?.includes('ch_general') === true)),
           Stream.runHead,
           Effect.timeout('5 seconds'),
         )
@@ -67,6 +68,7 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         assert.isAbove(casey?.pausedUntil ?? 0, 0)
         assert.deepStrictEqual(casey?.preferences, { sidebar: 'lagoon', isCompact: true, is24Hour: true })
         assert.deepStrictEqual(casey?.muted, ['ch_general'])
+        assert.deepStrictEqual(casey?.starred, ['ch_general'])
         assert.isTrue(restarted.saves.some(saved => saved.memberId === 'mem_casey' && saved.messageId === message.id && saved.state === 'done'))
         yield* one.deleteMessage(message.id, 'mem_avery')
         yield* two.changes.pipe(Stream.filter(state => !state.messages.some(item => item.id === message.id || item.id === reply.id)), Stream.runHead, Effect.timeout('5 seconds'))
