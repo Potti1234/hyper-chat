@@ -1230,6 +1230,17 @@ const summariesOf = (messages: ReadonlyArray<ChatMessage>): ReadonlyMap<string, 
   }))
 }
 
+type DayRows = Readonly<{ day: string; at: number; rows: ReadonlyArray<Exclude<Row, { _tag: 'day' }>> }>
+
+const daysOf = (rows: ReadonlyArray<Row>): ReadonlyArray<DayRows> => {
+  const days: Array<{ day: string; at: number; rows: Array<Exclude<Row, { _tag: 'day' }>> }> = []
+  for (const row of rows) {
+    if (row._tag === 'day') days.push({ day: row.day, at: row.at, rows: [] })
+    else days.at(-1)?.rows.push(row)
+  }
+  return days
+}
+
 const listView = (model: Model, h: HtmlBuilder<Message>): Html => {
   const rows = rowsOf(model.messages.filter(inChannel), model.readMarker, model.me.id, model.me)
   const summaries = summariesOf(model.messages)
@@ -1237,12 +1248,16 @@ const listView = (model: Model, h: HtmlBuilder<Message>): Html => {
   return box({ class: 'flex min-h-0 flex-1 flex-col-reverse overflow-y-auto', attributes: [h.Id('message-list'), h.DataAttribute('keep-scroll', `messages-${model.channelId}`)], children: [
       box({ as: 'ol', class: 'flex flex-col pb-2', attributes: [h.AriaLabel('Messages')], children: [
           model.older > 0 ? box({ as: 'li', class: 'py-3 text-center text-[13px] text-muted-foreground', attributes: [h.Key('older')], children: [`${model.older} older messages are not shown`] }, h) : introView(model, h),
-          ...rows.map(row =>
-            row._tag === 'day'
-              ? box({ as: 'li', class: slack.dayDivider, attributes: [h.Key(`day-${row.day}`)], children: [box({ as: 'span', children: [dayLabel(row.at, model.now, model.me)] }, h)] }, h)
-              : row._tag === 'new'
-                ? box({ as: 'li', class: slack.newDivider, attributes: [h.Key('new'), h.Id('new-divider')], children: ['New'] }, h)
-                : messageRegion(model, row.message, row.isFirst, 'channel', row.message.threadId === null ? (summaries.get(row.message.id) ?? null) : null, h),
+          // Each day is its own item, so its sticky divider gives way to the next day's.
+          ...daysOf(rows).map(({ day, at, rows: dayRows }) =>
+            box({ as: 'li', attributes: [h.Key(`day-${day}`)], children: [
+                box({ class: slack.dayDivider, children: [box({ as: 'span', children: [dayLabel(at, model.now, model.me)] }, h)] }, h),
+                box({ as: 'ol', class: 'flex flex-col', children: dayRows.map(row =>
+                    row._tag === 'new'
+                      ? box({ as: 'li', class: slack.newDivider, attributes: [h.Key('new'), h.Id('new-divider')], children: ['New'] }, h)
+                      : messageRegion(model, row.message, row.isFirst, 'channel', row.message.threadId === null ? (summaries.get(row.message.id) ?? null) : null, h),
+                  ) }, h),
+              ] }, h),
           ),
         ] }, h),
     ] }, h)
