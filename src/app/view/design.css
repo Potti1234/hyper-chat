@@ -70,6 +70,14 @@
   .message-text { overflow-wrap: anywhere; white-space: pre-wrap; }
   .message-text a { color: var(--link); }
   @media (hover: hover) { .message-text a:hover { text-decoration: underline; } }
+  /* mrkdwn (src/app/mrkdwn.ts) in message text. */
+  .md-p { margin: 0; }
+  .md-quote { margin: 2px 0; border-left: 4px solid color-mix(in oklab, var(--foreground) 22%, transparent); padding-left: 12px; }
+  .md-code { border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 3px; padding: 1px 3px; background: var(--muted); color: var(--destructive); font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+  .md-pre { margin: 4px 0; overflow-x: auto; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 4px; padding: 8px; background: var(--muted); font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+  .md-list { margin: 0; padding-left: 26px; white-space: normal; }
+  .md-bullets { list-style: disc; }
+  .md-numbers { list-style: decimal; }
   .mention { border-radius: 3px; padding: 0 2px; background: var(--mention); color: var(--mention-foreground); font-weight: 500; }
   .day-divider { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: center; margin: 8px 0; }
   .day-divider::before { content: ''; position: absolute; inset: 50% 0 auto; border-top: 1px solid var(--border); }

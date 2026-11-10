@@ -13,7 +13,7 @@ import type { Preferences } from '../domain'
 export type BoxElement =
   | 'div' | 'span' | 'p' | 'a' | 'ul' | 'ol' | 'li' | 'header' | 'footer' | 'main' | 'aside' | 'nav'
   | 'section' | 'article' | 'form' | 'label' | 'strong' | 'em' | 'code' | 'pre' | 'h1' | 'h2' | 'h3'
-  | 'button' | 'br'
+  | 'button' | 'br' | 'blockquote' | 's'
 
 type Attributes<Msg> = ReadonlyArray<Attribute<Msg> | ChildAttribute>
 type Builder<Msg> = (attributes: Attributes<Msg>, children: ReadonlyArray<Html | string>) => Html
@@ -112,6 +112,12 @@ export const slack = {
   messageText: 'message-text',
   messageActions: 'message-actions',
   mention: 'mention',
+  mdParagraph: 'md-p',
+  mdQuote: 'md-quote',
+  mdCode: 'md-code',
+  mdCodeBlock: 'md-pre',
+  mdBullets: 'md-list md-bullets',
+  mdNumbers: 'md-list md-numbers',
   dayDivider: 'day-divider',
   newDivider: 'new-divider',
   composer: 'composer',

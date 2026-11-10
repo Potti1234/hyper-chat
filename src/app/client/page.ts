@@ -18,6 +18,7 @@ import { Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAG
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
+import { formatBar } from '../view/composer'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { authorName, messageText } from '../view/message'
@@ -1181,6 +1182,7 @@ const threadView = (model: Model, h: HtmlBuilder<Message>): Html => {
             ] }, h),
           canWrite(model)
             ? box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedThreadDraft())], children: [
+                formatBar(h),
                 textarea({ id: 'thread-composer', value: thread.draft, rows: 1, placeholder: 'Reply…', onInput: text => Message.ChangedThreadDraft({ text }), ariaLabel: 'Reply in thread', resize: 'none', variant: 'slack-composer' }, h),
                 box({ class: 'flex items-center gap-1 px-2 pb-1.5', children: [
                     box({ class: 'flex-1 text-[13px]', children: [
@@ -1228,6 +1230,7 @@ const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
   box({ class: 'shrink-0', attributes: [h.Id('composer-area')], children: [
       canWrite(model)
         ? box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedDraft())], children: [
+              formatBar(h),
               textarea({ id: 'composer', value: model.draft, rows: 1, placeholder: placeholderOf(model), onInput: text => Message.ChangedDraft({ text }), ariaLabel: placeholderOf(model), resize: 'none', variant: 'slack-composer' }, h),
               box({ class: 'flex items-center gap-1 px-2 pb-1.5', children: [
                   box({ as: 'span', class: 'flex-1 text-[12px] text-muted-foreground', children: [model.draft.includes('\n') ? 'Shift + Return to add a new line' : ''] }, h),

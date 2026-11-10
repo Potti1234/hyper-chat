@@ -14,6 +14,7 @@ import { ChannelKind, MAX_MESSAGE, Member, Message as ChatMessage, canRead, conv
 import { emojiName } from '../emoji'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
+import { formatBar } from '../view/composer'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { authorName, messageText } from '../view/message'
@@ -308,6 +309,7 @@ const cardView = (model: Model, card: ThreadCard, h: HtmlBuilder<Message>): Html
           ...card.replies.slice(hidden).map(message => messageView(model, message, h)),
         ] }, h),
       box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedReply({ threadId: card.root.id }))], children: [
+          formatBar(h),
           textarea({ id: `reply-${card.root.id}`, value: draft, rows: 1, placeholder: 'Reply…', onInput: text => Message.ChangedReply({ threadId: card.root.id, text }), ariaLabel: `Reply in thread in ${card.channelLabel}`, resize: 'none', variant: 'slack-composer' }, h),
           box({ class: 'flex items-center justify-end px-2 pb-1.5', children: [
               button({ variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send reply', title: 'Send reply', isDisabled: draft.trim() === '' || model.sending === card.root.id, children: [Icon.icon('send', {}, h)] }, h),

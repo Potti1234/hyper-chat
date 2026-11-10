@@ -65,18 +65,18 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 
 | Feature | Slack | hyper-chat |
 | --- | --- | --- |
-| Send | Enter sends, Shift+Enter new line | **planned** |
-| Grouping | Same author within a few minutes collapses avatar and name; hover shows the time in the gutter | **planned** |
-| Day dividers | Sticky "Today", "Yesterday", "Monday, November 3rd" pills | **planned** |
-| New-messages line | Red "New" line where you stopped reading | **planned** |
-| Edit / delete own | Hover toolbar ⋮ menu; "(edited)" marker; delete confirmation | **planned** |
-| Reactions | Emoji picker, reaction pills with counts, hover lists who reacted | **planned** |
-| Hover toolbar | ✅ 👀 🙌 quick reactions, add reaction, reply in thread, forward, save for later, ⋮ | **planned** |
-| Threads | "Reply in thread" opens the thread pane; "N replies" row with avatars and last reply time; "Also send to #channel" checkbox | **planned** |
+| Send | Enter sends, Shift+Enter new line | **done** |
+| Grouping | Same author within a few minutes collapses avatar and name; hover shows the time in the gutter | **done** |
+| Day dividers | Sticky "Today", "Yesterday", "Monday, November 3rd" pills | **done** |
+| New-messages line | Red "New" line where you stopped reading | **done** |
+| Edit / delete own | Hover toolbar ⋮ menu; "(edited)" marker; delete confirmation | **done** |
+| Reactions | Emoji picker, reaction pills with counts, hover lists who reacted | **done** |
+| Hover toolbar | ✅ 👀 🙌 quick reactions, add reaction, reply in thread, forward, save for later, ⋮ | **done** (no forward) |
+| Threads | "Reply in thread" opens the thread pane; "N replies" row with avatars and last reply time; "Also send to #channel" checkbox | **done** |
 | Threads view | All threads you are part of, unread first | **done** |
 | Mentions | `@person`, `@channel`, `@here`; highlighted, yellow background when it mentions you | **done** |
 | Channel links | `#channel` links | **planned** |
-| Formatting | Bold `*x*`, italic `_x_`, strike `~x~`, `code`, code blocks, quotes `>`, lists, links; a formatting toolbar | **planned** |
+| Formatting | Bold `*x*`, italic `_x_`, strike `~x~`, `code`, code blocks, quotes `>`, lists, links; a formatting toolbar | **done**: `*bold*`, `_italic_`, `~strike~`, `` `code` ``, ```` ``` ```` blocks, `>` quotes, `-` and `1.` lists, `[text](url)` and bare links, `:emoji:` names; a formatting bar above every composer with Slack's shortcuts (Ctrl+B, Ctrl+I, Ctrl+Shift+X/U/C/7/8/9) |
 | Pins | Pin to channel, Pins tab | **done** (Pins tab in the header and details, "Pinned by" label) |
 | Save for later | Bookmark a message, Later view (in progress / done) | **done** (Later page with In progress / Completed) |
 | Copy link | Link to a message | **planned** |

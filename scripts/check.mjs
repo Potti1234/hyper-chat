@@ -112,6 +112,45 @@ try {
   await avery.click('#confirm-delete-button')
   check('the delete reaches Blake', await gone(blake, `${stamp} fixed`))
 
+  // Formatting: the bar and shortcuts write mrkdwn; messages render it.
+  check('the composer has a formatting bar', (await avery.locator('#composer-area [role=toolbar] [data-mrkdwn-format]').count()) === 9)
+  const fmt = `Fmt${Date.now()}`
+  await avery.click('#composer')
+  await avery.keyboard.type(fmt)
+  await avery.keyboard.press('Shift+Home')
+  await avery.click('#composer-area [data-mrkdwn-format=bold]')
+  check('Bold wraps the selection', await until(avery, fmt => document.querySelector('#composer')?.value === `*${fmt}*`, fmt))
+  await avery.keyboard.press('End')
+  await avery.keyboard.type(' and ')
+  await avery.keyboard.press('Control+I')
+  await avery.keyboard.type('slanted')
+  check('Ctrl+I starts italic at the caret', await until(avery, fmt => document.querySelector('#composer')?.value === `*${fmt}* and _slanted_`, fmt))
+  await avery.keyboard.press('End')
+  for (const line of ['', '> quoted', '- one', '- two', '`inline` and [docs](https://example.com) :tada:']) {
+    if (line !== '') await avery.keyboard.type(line)
+    await avery.keyboard.press('Shift+Enter')
+  }
+  await avery.keyboard.type('```const x = *y*```')
+  await avery.keyboard.press('Enter')
+  check('bold and italic render for Blake', await until(blake, fmt => [...document.querySelectorAll('#message-list li')].find(item => item.querySelector('strong')?.textContent === fmt)?.querySelector('em')?.textContent === 'slanted', fmt))
+  const shape = await blake.evaluate(fmt => {
+    const item = [...document.querySelectorAll('#message-list li')].find(row => row.querySelector('strong')?.textContent === fmt)
+    const link = item?.querySelector('a[href="https://example.com"]')
+    return {
+      quote: item?.querySelector('blockquote')?.textContent,
+      bullets: item?.querySelectorAll('ul li').length,
+      code: item?.querySelector('code')?.textContent,
+      pre: item?.querySelector('pre')?.textContent,
+      link: link?.textContent === 'docs' && link.target === '_blank' && link.rel.includes('noopener'),
+      emoji: item?.querySelector('[data-emoji-name=tada]') !== null,
+    }
+  }, fmt)
+  check('a quote renders', shape.quote === 'quoted', JSON.stringify(shape))
+  check('a list renders', shape.bullets === 2)
+  check('inline code and code blocks render as typed', shape.code === 'inline' && shape.pre === 'const x = *y*')
+  check('links open in a new tab', shape.link === true)
+  check('emoji names render as emoji', shape.emoji === true)
+
   // Threads
   await visit(avery, '/client/ch_general')
   await visit(blake, '/client/ch_general')

@@ -16,6 +16,7 @@ import { MAX_MESSAGE, Member, dayLabel, firstName, formatTime, inChannel, isMemb
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { MAX_DM_PEOPLE } from '../workspace'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
+import { formatBar } from '../view/composer'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { emptyNav, hasUnread, Nav, navOf, NavRow, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
@@ -376,6 +377,7 @@ const bodyView = (model: Model, h: HtmlBuilder<Message>): Html => {
               ...(existing === undefined ? [] : [buttonLink({ href: `/client/${existing.id}`, variant: 'outline', size: 'sm', class: 'self-start', children: ['Open conversation'] }, h)]),
             ] }, h),
       box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedMessage())], children: [
+          formatBar(h),
           textarea({ id: 'dm-draft', value: model.draft, rows: 1, placeholder: people.length === 0 ? 'Start a new message' : `Message ${names}`, onInput: text => Message.ChangedDraft({ text }), ariaLabel: 'Message', resize: 'none', variant: 'slack-composer' }, h),
           box({ class: 'flex items-center justify-end px-2 pb-1.5', children: [
               button({ variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send now', title: 'Send now', isDisabled: people.length === 0 || model.draft.trim() === '' || model.isSending, children: [Icon.icon('send', {}, h)] }, h),

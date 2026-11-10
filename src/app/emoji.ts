@@ -97,6 +97,11 @@ export const isEmoji = (glyph: string): boolean => BY_GLYPH.has(glyph)
 
 export const emojiName = (glyph: string): string => BY_GLYPH.get(glyph)?.name ?? glyph
 
+const BY_NAME = new Map(EMOJI.map(emoji => [emoji.name, emoji.glyph]))
+
+/** The glyph of a short name (`thumbsup`), as `:thumbsup:` in a message. */
+export const emojiByName = (name: string): string | undefined => BY_NAME.get(name)
+
 /** The emoji a status gets when it has only text. */
 export const STATUS_EMOJI = '💬'
 

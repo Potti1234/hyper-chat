@@ -36,8 +36,9 @@ const publicFile = (path: string) => fileURLToPath(new URL(`../public/${path}`, 
 
 export const page: Hyper.Options = {
   stylesheets: ['/styles.css'],
-  // Keeps the sidebar and the message list where they were scrolled to.
-  scripts: ['/keep-scroll.js'],
+  // Keeps the sidebar and the message list where they were scrolled to;
+  // the composers' formatting bar and shortcuts.
+  scripts: ['/keep-scroll.js', '/composer.js'],
   // Sessions belong to the signed-in member; signing out ends them.
   principal: Auth.principal,
   snapshotSecret: Hyper.secretFromEnvironment('HYPER_SNAPSHOT_SECRET', 'dev-snapshot-secret, set HYPER_SNAPSHOT_SECRET'),
@@ -59,6 +60,7 @@ const Routes = Layer.mergeAll(
   HttpRouter.add('GET', '/favicon.svg', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),
   HttpRouter.add('GET', '/styles.css', HttpServerResponse.file(publicFile('styles.css'), { contentType: 'text/css' })),
   HttpRouter.add('GET', '/keep-scroll.js', HttpServerResponse.file(publicFile('keep-scroll.js'), { contentType: 'text/javascript' })),
+  HttpRouter.add('GET', '/composer.js', HttpServerResponse.file(publicFile('composer.js'), { contentType: 'text/javascript' })),
   HttpStaticServer.layer({ root: publicFile('fonts'), prefix: '/fonts' }),
 )
 
