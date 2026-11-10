@@ -8,8 +8,8 @@ import { chromium } from 'playwright'
    DMs, channel management (browse, create, join, topic, members, leave),
    Activity (mentions, filters, opening an item), Mark unread, Saved for
    later (the Later page), pins, search and the
-   Ctrl+K quick switcher, and People: profiles, custom status and pausing
-   notifications.
+   Ctrl+K quick switcher, People: profiles, custom status and pausing
+   notifications, and Preferences.
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -34,7 +34,7 @@ const live = async (page, go) => {
   await go()
   await stream
   // Pages with key bindings are live once those are in; the others once the stream answered.
-  if (!/\/(channels|activity|later|search|people)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
+  if (!/\/(channels|activity|later|search|people|preferences)/.test(page.url())) await page.waitForFunction(() => document.querySelector('#hyper-keys') !== null)
   else await page.waitForTimeout(300)
   await settle(page)
 }
@@ -416,6 +416,31 @@ try {
   check('a DM row shows its partner as Active', await until(avery, () => document.querySelector('a[href="/client/dm_avery_blake"] [data-presence=active]') !== null))
   await blake.goto('about:blank')
   check('closing their page makes them Away', await until(avery, () => document.querySelector('a[href="/client/dm_avery_blake"] [data-presence=away]') !== null))
+
+  // Preferences: colour mode, sidebar theme, preset, compact display, clock.
+  await live(avery, () => avery.locator('#open-preferences').click())
+  check('the rail opens Preferences', avery.url().endsWith('/preferences') && (await avery.locator('#appearance').count()) === 1)
+  const root = (page, name) => until(page, name => document.querySelector('#app')?.classList.contains(name), name)
+  const rootNot = (page, name) => until(page, name => !document.querySelector('#app')?.classList.contains(name), name)
+  await avery.locator('#mode-dark').click()
+  check('Dark switches the page to dark', await root(avery, 'dark') && (await avery.locator('#mode-dark').getAttribute('aria-pressed')) === 'true')
+  await avery.locator('#mode-light').click()
+  check('Light switches it back', await rootNot(avery, 'dark'))
+  await avery.locator('#sidebar-jade').click()
+  check('a sidebar theme recolours the frame', await root(avery, 'sidebar-jade') && (await avery.locator('#sidebar-jade').getAttribute('aria-pressed')) === 'true')
+  await avery.locator('#preset-nord').click()
+  check('a creaseui preset themes the app', await root(avery, 'theme-nord'))
+  await avery.locator('#display-compact').click()
+  check('Compact is chosen', await root(avery, 'density-compact'))
+  await avery.locator('#clock-24').click()
+  check('the clock sample reads 24-hour', await until(avery, () => /\d{2}:\d{2}/.test(document.querySelector('#clock-24')?.textContent ?? '') && !/AM|PM/.test(document.querySelector('#clock-24')?.textContent ?? '')))
+  await visit(avery, '/client/ch_general')
+  check('choices stay after a reload', await root(avery, 'sidebar-jade') && await root(avery, 'theme-nord') && await root(avery, 'density-compact'))
+  check('compact leaves out pictures next to messages', await until(avery, () => document.querySelector('#message-list li[data-author]') !== null && document.querySelector('#message-list .message-gutter [data-slot=avatar]') === null))
+  check('times next to messages are 24-hour', await until(avery, () => [...document.querySelectorAll('#message-list li[data-author] .text-muted-foreground')].some(node => /^\d{1,2}:\d{2}$/.test(node.textContent.trim())) && ![...document.querySelectorAll('#message-list li[data-author]')].some(node => /\d (AM|PM)\b/.test(node.textContent))))
+  await visit(avery, '/preferences')
+  for (const id of ['#preset-default', '#sidebar-default', '#display-clean', '#clock-12']) await avery.locator(id).click()
+  check('defaults come back', await rootNot(avery, 'theme-nord') && await rootNot(avery, 'sidebar-jade') && await rootNot(avery, 'density-compact'))
 
   for (const { errors } of people) for (const error of errors) check('no browser errors', false, error)
 } finally {

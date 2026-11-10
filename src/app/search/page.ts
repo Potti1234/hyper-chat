@@ -180,7 +180,7 @@ const messageHit = (model: Model, hit: MessageHit, h: HtmlBuilder<Message>): Htm
           box({ class: 'text-[12px] font-semibold text-muted-foreground', children: [hit.message.threadId === null ? placeOf(hit.channelKind, hit.conversation) : `Thread in ${placeOf(hit.channelKind, hit.conversation)}`] }, h),
           box({ class: 'flex items-baseline gap-2', children: [
               authorName(author, model.now, h),
-              box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(hit.message.createdAt, model.now)} at ${formatTime(hit.message.createdAt)}`] }, h),
+              box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(hit.message.createdAt, model.now, model.me)} at ${formatTime(hit.message.createdAt, model.me)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: messageText(hit.message.text, model.members, h) }, h),
         ] }, h),
@@ -252,7 +252,7 @@ const resultsView = (model: Model, h: HtmlBuilder<Message>): Html => {
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${model.query.trim() === '' ? 'Search' : `${model.query.trim()} - Search`} - ${WORKSPACE_NAME} - hyper-chat`,
-  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, preferences: model.me.preferences, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'search', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [

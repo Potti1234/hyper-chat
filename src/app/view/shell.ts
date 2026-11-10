@@ -76,7 +76,7 @@ export const hasUnread = (nav: Nav): boolean => [...nav.channels, ...nav.dms].so
 
 // RAIL
 
-export type RailItem = 'home' | 'dms' | 'activity' | 'later' | 'search' | 'people'
+export type RailItem = 'home' | 'dms' | 'activity' | 'later' | 'search' | 'people' | 'preferences'
 
 type RailProps<Msg> = Readonly<{
   me: Member
@@ -107,6 +107,7 @@ export const rail = <Msg>(props: RailProps<Msg>, h: HtmlBuilder<Msg>): Html =>
       railLink({ href: '/later', label: 'Later', icon: Icon.bookmark({}, h), isActive: props.active === 'later' }, h),
       railLink({ href: '/people', label: 'People', icon: Icon.users({}, h), isActive: props.active === 'people' }, h),
       box({ class: 'flex-1' }, h),
+      buttonLink({ id: 'open-preferences', href: '/preferences', variant: 'sidebar-icon', size: 'icon', ariaLabel: 'Preferences', children: [Icon.icon('settings', {}, h)] }, h),
       button({ variant: 'sidebar-icon', size: 'icon', ariaLabel: props.me.isDark ? 'Light mode' : 'Dark mode', title: props.me.isDark ? 'Light mode' : 'Dark mode', onClick: props.onToggleTheme, children: [Icon.icon(props.me.isDark ? 'sun' : 'moon', {}, h)] }, h),
       box({ as: 'form', attributes: [h.Method('post'), h.Action('/logout')], children: [
           button({ variant: 'sidebar-icon', size: 'icon', type: 'submit', ariaLabel: 'Sign out', title: 'Sign out', children: [Icon.icon('log-out', {}, h)] }, h),

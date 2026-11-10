@@ -2,6 +2,8 @@ import type { Attribute, ChildAttribute, Html, HtmlBuilder } from 'foldkit/html'
 
 import { cn } from '@/lib/utils'
 
+import type { Preferences } from '../domain'
+
 /* The app's owned design layer (crease.lock.json: hyperchat/view): the
    domain patterns creaseui has no component for: the Slack frame (rail,
    sidebar, panes), message rows and reaction pills. Region roots carry h.Id
@@ -71,11 +73,18 @@ export const optionRow = <Msg>(
 
 /** The page root: light/dark and the member's theme preset as classes. */
 export const pageRoot = <Msg>(
-  props: Readonly<{ isDark: boolean; theme: string; class?: string; children: ReadonlyArray<Html> }>,
+  props: Readonly<{ isDark: boolean; theme: string; preferences?: Preferences | undefined; class?: string; children: ReadonlyArray<Html> }>,
   h: HtmlBuilder<Msg>,
 ): Html =>
   h.div(
-    [h.Id('app'), h.Class(cn('app-root flex h-dvh overflow-hidden bg-background text-foreground', props.isDark && 'dark', props.theme !== '' && `theme-${props.theme}`, props.class))],
+    [h.Id('app'), h.Class(cn(
+      'app-root flex h-dvh overflow-hidden bg-background text-foreground',
+      props.isDark && 'dark',
+      props.theme !== '' && `theme-${props.theme}`,
+      props.preferences !== undefined && props.preferences.sidebar !== '' && `sidebar-${props.preferences.sidebar}`,
+      props.preferences?.isCompact === true && 'density-compact',
+      props.class,
+    ))],
     [...props.children],
   )
 

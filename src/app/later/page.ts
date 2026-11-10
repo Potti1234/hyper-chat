@@ -200,11 +200,11 @@ const itemView = (model: Model, item: LaterItem, h: HtmlBuilder<Message>): Html 
       box({ class: 'flex min-w-0 flex-1 flex-col gap-0.5', children: [
           box({ class: 'flex items-baseline gap-2 text-[12px] text-muted-foreground', children: [
               box({ as: 'span', class: 'font-semibold', children: [item.message.threadId === null ? where : `Thread in ${where}`] }, h),
-              box({ as: 'span', children: [`Saved ${dayLabel(item.at, model.now).toLowerCase()}`] }, h),
+              box({ as: 'span', children: [`Saved ${dayLabel(item.at, model.now, model.me).toLowerCase()}`] }, h),
             ] }, h),
           box({ class: 'flex items-baseline gap-2', children: [
               authorName(author, model.now, h),
-              box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(item.message.createdAt, model.now)} at ${formatTime(item.message.createdAt)}`] }, h),
+              box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(item.message.createdAt, model.now, model.me)} at ${formatTime(item.message.createdAt, model.me)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: messageText(item.message.text, model.members, h) }, h),
         ] }, h),
@@ -240,13 +240,13 @@ const listView = (model: Model, h: HtmlBuilder<Message>): Html => {
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Later - ${WORKSPACE_NAME} - hyper-chat`,
-  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, preferences: model.me.preferences, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'later', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
           box({ as: 'main', class: slack.main, children: [
-              region(h, { id: 'later', deps: [model.items, model.members, model.tab, model.now, model.notice], render: () => listView(model, h) }),
+              region(h, { id: 'later', deps: [model.items, model.members, model.tab, model.now, model.notice, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
             ] }, h),
         ] }, h),
     ] }, h),

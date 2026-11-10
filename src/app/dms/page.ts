@@ -292,8 +292,8 @@ const previewOf = (model: Model, row: DmRow): string => {
 }
 
 const whenOf = (model: Model, at: number): string => {
-  const day = dayLabel(at, model.now)
-  return day === 'Today' ? formatTime(at) : day
+  const day = dayLabel(at, model.now, model.me)
+  return day === 'Today' ? formatTime(at, model.me) : day
 }
 
 const dmRowView = (model: Model, row: DmRow, h: HtmlBuilder<Message>): Html =>
@@ -386,12 +386,12 @@ const bodyView = (model: Model, h: HtmlBuilder<Message>): Html => {
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Direct messages - ${WORKSPACE_NAME} - hyper-chat`,
-  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, preferences: model.me.preferences, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'dms', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
-          region(h, { id: 'dm-list', deps: [model.dms, model.members, model.filter, model.now, model.me.id], render: () => listView(model, h) }),
+          region(h, { id: 'dm-list', deps: [model.dms, model.members, model.filter, model.now, model.me.id, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
           box({ as: 'main', class: slack.main, children: [
               box({ as: 'header', class: 'flex min-h-[49px] shrink-0 items-center gap-2 border-b px-4', attributes: [h.Id('new-message-header')], children: [
                   box({ as: 'h1', class: 'text-[18px] font-black', children: ['New message'] }, h),

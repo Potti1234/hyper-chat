@@ -10,6 +10,19 @@ import { Schema as S, SchemaIssue } from 'effect'
 export const Status = S.Struct({ emoji: S.String, text: S.String, until: S.Number })
 export type Status = typeof Status.Type
 
+/** How someone wants the app to look and read (Slack's Preferences). */
+export const Preferences = S.Struct({
+  /** A Slack frame colour from SIDEBAR_THEMES ('' keeps the theme's own). */
+  sidebar: S.String,
+  /** Compact message display: no avatars, tighter rows. */
+  isCompact: S.Boolean,
+  /** Times as 15:41 instead of 3:41 PM. */
+  is24Hour: S.Boolean,
+})
+export type Preferences = typeof Preferences.Type
+
+export const DEFAULT_PREFERENCES: Preferences = { sidebar: '', isCompact: false, is24Hour: false }
+
 export const Member = S.Struct({
   id: S.String,
   name: S.String,
@@ -31,6 +44,7 @@ export const Member = S.Struct({
   status: S.optionalKey(Status),
   /** Notifications paused until then (Slack's "Pause notifications"). */
   pausedUntil: S.optionalKey(S.Number),
+  preferences: S.optionalKey(Preferences),
 })
 export type Member = typeof Member.Type
 
@@ -255,18 +269,26 @@ export const validate = <A>(
 
 const TIME_ZONE = 'Europe/Berlin'
 
-/** 3:41 PM, as Slack shows it next to a message. */
-export const formatTime = (at: number): string =>
-  new Date(at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TIME_ZONE })
+/** Whose clock times are shown on: their time zone and 12/24-hour choice. */
+export type Viewer = Pick<Member, 'timeZone' | 'preferences'> | undefined
 
-/** The calendar day of a moment (yyyy-mm-dd), for day dividers. */
-export const dayOf = (at: number): string => new Date(at).toLocaleDateString('en-CA', { timeZone: TIME_ZONE })
+const zoneOf = (viewer: Viewer): string => viewer?.timeZone ?? TIME_ZONE
+
+export const preferencesOf = (member: Pick<Member, 'preferences'> | undefined): Preferences => member?.preferences ?? DEFAULT_PREFERENCES
+
+/** 3:41 PM (or 15:41), as Slack shows it next to a message, in the viewer's zone. */
+export const formatTime = (at: number, viewer?: Viewer): string =>
+  new Date(at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hourCycle: preferencesOf(viewer).is24Hour ? 'h23' : 'h12', timeZone: zoneOf(viewer) })
+
+/** The calendar day of a moment (yyyy-mm-dd) for the viewer, for day dividers. */
+export const dayOf = (at: number, viewer?: Viewer): string => new Date(at).toLocaleDateString('en-CA', { timeZone: zoneOf(viewer) })
 
 /** "Today", "Yesterday" or "Monday, November 3rd". */
-export const dayLabel = (at: number, now: number): string => {
-  const day = dayOf(at)
-  if (day === dayOf(now)) return 'Today'
-  if (day === dayOf(now - 86_400_000)) return 'Yesterday'
+export const dayLabel = (at: number, now: number, viewer?: Viewer): string => {
+  const day = dayOf(at, viewer)
+  if (day === dayOf(now, viewer)) return 'Today'
+  if (day === dayOf(now - 86_400_000, viewer)) return 'Yesterday'
+  const TIME_ZONE = zoneOf(viewer)
   const date = new Date(at)
   const n = Number(date.toLocaleDateString('en-US', { day: 'numeric', timeZone: TIME_ZONE }))
   const suffix = n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'

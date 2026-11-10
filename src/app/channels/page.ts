@@ -336,7 +336,7 @@ const createDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `All channels - ${WORKSPACE_NAME} - hyper-chat`,
-  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, preferences: model.me.preferences, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [

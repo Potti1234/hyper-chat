@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { Clock, Context, Effect, Layer, type Scope, Semaphore, Stream, SubscriptionRef } from 'effect'
 
-import type { Channel, Member, Message, Read, Saved, SavedState } from './domain'
+import type { Channel, Member, Message, Preferences, Read, Saved, SavedState } from './domain'
 import { hashPassword, verifyPassword } from './password'
 import { type Presence, memoryPresence, sameIds } from './presence'
 import {
@@ -35,6 +35,7 @@ import {
   deleteMessage,
   toggleReaction,
   postMessage,
+  setPreferences,
   setPreset,
   setTheme,
   setPaused,
@@ -96,6 +97,7 @@ export class Workspace extends Context.Service<
     readonly addMember: (input: NewAccount) => Effect.Effect<Member, InvalidChange>
     readonly setTheme: (memberId: string, isDark: boolean) => Effect.Effect<void>
     readonly setPreset: (memberId: string, theme: string) => Effect.Effect<void>
+    readonly setPreferences: (memberId: string, preferences: Preferences) => Effect.Effect<void, InvalidChange>
     readonly updateProfile: (memberId: string, input: ProfileInput) => Effect.Effect<Member, InvalidChange>
     readonly setStatus: (memberId: string, input: Readonly<{ emoji: string; text: string; until: number }>) => Effect.Effect<void, InvalidChange>
     readonly setPaused: (memberId: string, until: number) => Effect.Effect<void>
@@ -144,6 +146,7 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
     }),
   setTheme: (memberId, isDark) => backend.run(setTheme(memberId, isDark)),
   setPreset: (memberId, theme) => backend.run(setPreset(memberId, theme)),
+  setPreferences: (memberId, preferences) => backend.run(setPreferences(memberId, preferences)),
   updateProfile: (memberId, input) => backend.run(updateProfile(memberId, input)),
   setStatus: (memberId, input) => backend.run(setStatus(memberId, input)),
   setPaused: (memberId, until) => backend.run(setPaused(memberId, until)),

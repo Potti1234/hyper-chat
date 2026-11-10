@@ -256,7 +256,7 @@ const messageView = (model: Model, message: ChatMessage, h: HtmlBuilder<Message>
       box({ class: 'min-w-0 flex-1', children: [
           box({ class: 'flex items-baseline gap-2', children: [
               authorName(author, model.now, h),
-              box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(message.createdAt, model.now)} at ${formatTime(message.createdAt)}`] }, h),
+              box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(message.createdAt, model.now, model.me)} at ${formatTime(message.createdAt, model.me)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: [
               ...messageText(message.text, model.members, h),
@@ -327,7 +327,7 @@ const listView = (model: Model, h: HtmlBuilder<Message>): Html =>
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Threads - ${WORKSPACE_NAME} - hyper-chat`,
-  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, preferences: model.me.preferences, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
@@ -341,7 +341,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
               box({ as: 'header', class: 'flex min-h-[49px] shrink-0 items-center gap-2 border-b px-4', attributes: [h.Id('threads-header')], children: [
                   box({ as: 'h1', class: 'text-[18px] font-black', children: ['Threads'] }, h),
                 ] }, h),
-              region(h, { id: 'threads-list', deps: [model.threads, model.members, model.expanded, model.drafts, model.sending, model.now, model.me.id], render: () => listView(model, h) }),
+              region(h, { id: 'threads-list', deps: [model.threads, model.members, model.expanded, model.drafts, model.sending, model.now, model.me.id, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
             ] }, h),
         ] }, h),
       region(h, {

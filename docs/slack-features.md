@@ -104,7 +104,9 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 
 | Feature | Slack | hyper-chat |
 | --- | --- | --- |
-| Themes | Light/dark and colour themes | Light/dark plus the twelve creaseui presets, per account — **planned** |
+| Themes | Light/dark and colour themes | Light/dark, Slack's sidebar colour themes (Aubergine, Clementine, Banana, Jade, Lagoon, Barbra, Gray, Mood Indigo) and the twelve creaseui presets, per account, on `/preferences` (the gear on the rail) — **done** |
+| Message display | Clean or compact | Clean (pictures, roomy rows) or compact (no pictures, tighter rows) — **done** |
+| Clock | 12- or 24-hour times | 12- or 24-hour, in your own time zone — **done** |
 | Sidebar options | Show/hide sections, sort | **out of scope** |
 | Notification preferences | All / mentions / nothing, per channel | Per channel: all / mentions / nothing (affects badges) — **planned** |
 | Language and region | — | **out of scope** |

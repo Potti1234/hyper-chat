@@ -194,8 +194,8 @@ const summaryOf = (model: Model, item: ActivityItem): string =>
   item.kind === 'reaction' ? `${whoOf(model, item)} reacted ${item.emoji} to your message` : `${whoOf(model, item)}: ${item.message.text}`
 
 const whenOf = (model: Model, at: number): string => {
-  const day = dayLabel(at, model.now)
-  return day === 'Today' ? formatTime(at) : day
+  const day = dayLabel(at, model.now, model.me)
+  return day === 'Today' ? formatTime(at, model.me) : day
 }
 
 const kindIcon = (item: ActivityItem, h: HtmlBuilder<Message>): Html =>
@@ -252,7 +252,7 @@ const messageView = (model: Model, message: ChatMessage, h: HtmlBuilder<Message>
       box({ class: 'min-w-0 flex-1', children: [
           box({ class: 'flex items-baseline gap-2', children: [
               authorName(author, model.now, h, 'text-[15px]'),
-              box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(message.createdAt, model.now)} at ${formatTime(message.createdAt)}`] }, h),
+              box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(message.createdAt, model.now, model.me)} at ${formatTime(message.createdAt, model.me)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, children: messageText(message.text, model.members, h) }, h),
           ...(message.reactions.length === 0
@@ -287,14 +287,14 @@ const previewView = (model: Model, h: HtmlBuilder<Message>): Html => {
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Activity - ${WORKSPACE_NAME} - hyper-chat`,
-  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, preferences: model.me.preferences, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'activity', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
-          region(h, { id: 'activity-list', deps: [model.items, model.members, model.tab, model.isUnreadOnly, model.picked, model.seenAt, model.now], render: () => listView(model, h) }),
+          region(h, { id: 'activity-list', deps: [model.items, model.members, model.tab, model.isUnreadOnly, model.picked, model.seenAt, model.now, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
           box({ as: 'main', class: slack.main, children: [
-              region(h, { id: 'activity-preview', deps: [model.items, model.root, model.members, model.picked, model.now], render: () => previewView(model, h) }),
+              region(h, { id: 'activity-preview', deps: [model.items, model.root, model.members, model.picked, model.now, model.me.timeZone, model.me.preferences], render: () => previewView(model, h) }),
             ] }, h),
         ] }, h),
     ] }, h),

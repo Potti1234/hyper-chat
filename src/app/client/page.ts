@@ -14,7 +14,7 @@ import { input } from '@/ui/input'
 import { textarea } from '@/ui/textarea'
 
 import { requireMember } from '../auth'
-import { Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, dmPartners, formatTime, inChannel, isMemberOf, readAt } from '../domain'
+import { Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, preferencesOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
@@ -767,13 +767,13 @@ type Row =
 
 /** Messages in order with day dividers, the "New" line, and whether each
  *  starts a run by its author (Slack groups within 5 minutes). */
-export const rowsOf = (messages: ReadonlyArray<ChatMessage>, readMarker: number, meId: string): ReadonlyArray<Row> => {
+export const rowsOf = (messages: ReadonlyArray<ChatMessage>, readMarker: number, meId: string, viewer?: Viewer): ReadonlyArray<Row> => {
   const rows: Array<Row> = []
   let previous: ChatMessage | undefined
   let markedNew = false
   for (const message of messages) {
-    const day = dayOf(message.createdAt)
-    const dayChanged = previous === undefined || dayOf(previous.createdAt) !== day
+    const day = dayOf(message.createdAt, viewer)
+    const dayChanged = previous === undefined || dayOf(previous.createdAt, viewer) !== day
     if (dayChanged) rows.push({ _tag: 'day', day, at: message.createdAt })
     const isNew = !markedNew && message.createdAt > readMarker && message.authorId !== meId
     if (isNew) {
@@ -872,7 +872,7 @@ const summaryView = (model: Model, message: ChatMessage, summary: ThreadSummary,
     children: [
       box({ class: 'flex gap-1', children: summary.replierIds.map(id => avatar(model.members.find(member => member.id === id), h, 'sm')) }, h),
       box({ as: 'span', class: 'font-bold text-link', children: [`${summary.count} ${summary.count === 1 ? 'reply' : 'replies'}`] }, h),
-      box({ as: 'span', children: [`Last reply ${dayLabel(summary.lastAt, model.now).toLowerCase()} at ${formatTime(summary.lastAt)}`] }, h),
+      box({ as: 'span', children: [`Last reply ${dayLabel(summary.lastAt, model.now, model.me).toLowerCase()} at ${formatTime(summary.lastAt, model.me)}`] }, h),
     ],
   }, h)
 
@@ -911,18 +911,19 @@ const messageView = (model: Model, message: ChatMessage, isFirst: boolean, where
             ...(isSaved ? [box({ as: 'span', class: 'flex items-center gap-1 text-link', attributes: [h.DataAttribute('saved-label', '')], children: [Icon.bookmark({ class: 'size-3 fill-current' }, h), 'Saved for later'] }, h)] : []),
           ] }, h)]
         : []),
-      box({ class: slack.messageGutter, children: isFirst ? [avatar(author, h, 'md')] : [box({ as: 'span', class: slack.messageHoverTime, children: [formatTime(message.createdAt)] }, h)] }, h),
+      // Compact display (Preferences) drops the pictures; the time shows on hover instead.
+      box({ class: slack.messageGutter, children: isFirst && !preferencesOf(model.me).isCompact ? [avatar(author, h, 'md')] : isFirst ? [] : [box({ as: 'span', class: slack.messageHoverTime, children: [formatTime(message.createdAt, model.me)] }, h)] }, h),
       box({ class: 'min-w-0 flex-1', children: [
           ...(where === 'channel' && message.threadId !== null ? [repliedToView(model, message, h)] : []),
           ...(isFirst
-            ? [box({ class: 'flex items-baseline gap-2', children: [authorName(author, model.now, h), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [formatTime(message.createdAt)] }, h)] }, h)]
+            ? [box({ class: 'flex items-baseline gap-2', children: [authorName(author, model.now, h), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [formatTime(message.createdAt, model.me)] }, h)] }, h)]
             : []),
           ...(editing !== null
             ? [editView(editing, h)]
             : [
                 box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: [
                     ...messageText(message.text, model.members, h),
-                    ...(message.editedAt === null ? [] : [box({ as: 'span', class: 'ml-1 text-[12px] text-muted-foreground', attributes: [h.Title(`Edited ${formatTime(message.editedAt)}`)], children: ['(edited)'] }, h)]),
+                    ...(message.editedAt === null ? [] : [box({ as: 'span', class: 'ml-1 text-[12px] text-muted-foreground', attributes: [h.Title(`Edited ${formatTime(message.editedAt, model.me)}`)], children: ['(edited)'] }, h)]),
                   ] }, h),
                 ...(message.reactions.length === 0 ? [] : [reactionsView(model, message, where, h)]),
                 ...(summary === null ? [] : [summaryView(model, message, summary, h)]),
@@ -1026,7 +1027,7 @@ const pinsTab = (model: Model, h: HtmlBuilder<Message>): Html =>
           return box({ as: 'li', class: 'flex gap-2 rounded-lg border p-3', attributes: [h.DataAttribute('pin', pin.id)], children: [
               avatar(author, h, 'md'),
               box({ class: 'min-w-0 flex-1', children: [
-                  box({ class: 'flex items-baseline gap-2', children: [authorName(author, model.now, h, 'text-[14px]'), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(pin.createdAt, model.now)} at ${formatTime(pin.createdAt)}`] }, h)] }, h),
+                  box({ class: 'flex items-baseline gap-2', children: [authorName(author, model.now, h, 'text-[14px]'), box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(pin.createdAt, model.now, model.me)} at ${formatTime(pin.createdAt, model.me)}`] }, h)] }, h),
                   box({ class: slack.messageText, children: messageText(pin.text, model.members, h) }, h),
                 ] }, h),
               ...(canWrite(model) ? [button({ variant: 'ghost', size: 'icon-sm', ariaLabel: 'Un-pin', title: 'Un-pin', onClick: Message.ClickedPin({ messageId: pin.id }), children: [Icon.icon('x', {}, h)] }, h)] : []),
@@ -1057,7 +1058,7 @@ const detailsDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
                   : [button({ id: 'archive-channel', variant: 'danger-text', onClick: Message.ClickedArchive({ isArchived: !channel.isArchived }), leadingIcon: Icon.icon('archive', {}, h), children: [channel.isArchived ? 'Unarchive channel' : 'Archive channel for everyone'] }, h)] }, h)
               : box({ class: 'flex flex-col gap-3', children: [
                   box({ class: 'rounded-lg border', children: [aboutField(model, channel, 'name', slots, h), aboutField(model, channel, 'topic', slots, h), aboutField(model, channel, 'description', slots, h),
-                      box({ class: 'px-4 py-3', children: [box({ as: 'p', class: 'text-[14px] font-bold', children: ['Created by'] }, h), box({ as: 'p', class: 'text-[14px]', children: [`${creator?.name ?? 'Someone'} on ${dayLabel(channel.createdAt, model.now)}`] }, h)] }, h)] }, h),
+                      box({ class: 'px-4 py-3', children: [box({ as: 'p', class: 'text-[14px] font-bold', children: ['Created by'] }, h), box({ as: 'p', class: 'text-[14px]', children: [`${creator?.name ?? 'Someone'} on ${dayLabel(channel.createdAt, model.now, model.me)}`] }, h)] }, h)] }, h),
                   ...(isMember && channel.name !== DEFAULT_CHANNEL ? [button({ id: 'leave-channel', variant: 'danger-text', onClick: Message.ClickedLeave(), leadingIcon: Icon.icon('log-out', {}, h), children: [`Leave ${channel.kind === 'private' ? '' : '#'}${channel.name}`] }, h)] : []),
                 ] }, h),
         ] }, h),
@@ -1140,7 +1141,7 @@ const summariesOf = (messages: ReadonlyArray<ChatMessage>): ReadonlyMap<string, 
 }
 
 const listView = (model: Model, h: HtmlBuilder<Message>): Html => {
-  const rows = rowsOf(model.messages.filter(inChannel), model.readMarker, model.me.id)
+  const rows = rowsOf(model.messages.filter(inChannel), model.readMarker, model.me.id, model.me)
   const summaries = summariesOf(model.messages)
   // A reversed column keeps the newest message in view: the list goes in as one block.
   return box({ class: 'flex min-h-0 flex-1 flex-col-reverse overflow-y-auto', attributes: [h.Id('message-list'), h.DataAttribute('keep-scroll', `messages-${model.channelId}`)], children: [
@@ -1148,7 +1149,7 @@ const listView = (model: Model, h: HtmlBuilder<Message>): Html => {
           model.older > 0 ? box({ as: 'li', class: 'py-3 text-center text-[13px] text-muted-foreground', attributes: [h.Key('older')], children: [`${model.older} older messages are not shown`] }, h) : introView(model, h),
           ...rows.map(row =>
             row._tag === 'day'
-              ? box({ as: 'li', class: slack.dayDivider, attributes: [h.Key(`day-${row.day}`)], children: [box({ as: 'span', children: [dayLabel(row.at, model.now)] }, h)] }, h)
+              ? box({ as: 'li', class: slack.dayDivider, attributes: [h.Key(`day-${row.day}`)], children: [box({ as: 'span', children: [dayLabel(row.at, model.now, model.me)] }, h)] }, h)
               : row._tag === 'new'
                 ? box({ as: 'li', class: slack.newDivider, attributes: [h.Key('new'), h.Id('new-divider')], children: ['New'] }, h)
                 : messageRegion(model, row.message, row.isFirst, 'channel', row.message.threadId === null ? (summaries.get(row.message.id) ?? null) : null, h),
@@ -1162,7 +1163,7 @@ const threadView = (model: Model, h: HtmlBuilder<Message>): Html => {
   const root = thread === null ? undefined : model.messages.find(message => message.id === thread.id)
   if (thread === null || root === undefined || model.channel === null) return box({ attributes: [h.Id('thread')] }, h)
   const replies = repliesOf(model.messages, root.id)
-  const rows = rowsOf(replies, Number.MAX_SAFE_INTEGER, model.me.id)
+  const rows = rowsOf(replies, Number.MAX_SAFE_INTEGER, model.me.id, model.me)
   const where = model.channel.kind === 'dm' ? 'direct message' : `#${model.channel.name}`
   return box({ as: 'aside', class: slack.thread, attributes: [h.Id('thread'), h.AriaLabel('Thread')], children: [
       box({ as: 'header', class: 'flex min-h-[49px] shrink-0 items-center gap-2 border-b px-4', children: [
@@ -1248,7 +1249,7 @@ const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${model.channel === null || model.channel.kind === 'dm' ? '' : '#'}${titleOf(model)} - ${WORKSPACE_NAME} - hyper-chat`,
-  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+  body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, preferences: model.me.preferences, children: [
       switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, model.now, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, now: model.now, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
@@ -1260,10 +1261,10 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
           }),
           box({ as: 'main', class: slack.main, attributes: model.thread === null ? [] : [h.DataAttribute('split', '')], children: [
               region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id, model.pins.length], render: () => headerView(model, h) }),
-              region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id, model.saved, model.pins], render: () => listView(model, h) }),
+              region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id, model.saved, model.pins, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
               region(h, { id: 'composer-area', deps: [model.draft, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
             ] }, h),
-          region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now, model.saved], render: () => threadView(model, h) }),
+          region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now, model.saved, model.me.timeZone, model.me.preferences], render: () => threadView(model, h) }),
         ] }, h),
       region(h, {
         id: 'keys',
@@ -1279,7 +1280,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
             ] }, h),
       }),
       region(h, { id: 'overlay', deps: [model.overlay, model.emojiQuery], render: () => overlayView(model, h) }),
-      region(h, { id: 'details', deps: [model.details, model.about, model.channel, model.members, model.me.id, model.pins, model.now], render: () => box({ attributes: [h.Id('details')], children: [detailsDialog(model, h)] }, h) }),
+      region(h, { id: 'details', deps: [model.details, model.about, model.channel, model.members, model.me.id, model.pins, model.now, model.me.timeZone, model.me.preferences], render: () => box({ attributes: [h.Id('details')], children: [detailsDialog(model, h)] }, h) }),
       region(h, { id: 'confirm', deps: [model.confirm, model.deleting, model.messages, model.members], render: () => box({ attributes: [h.Id('confirm')], children: [confirmDialog(model, h)] }, h) }),
       region(h, {
         id: 'notice',

@@ -1,7 +1,8 @@
 import { Data, Effect } from 'effect'
 
 import { activityOf } from './activity'
-import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Read, type Saved, type SavedState, canRead, channelSlug, inChannel, isMemberOf } from './domain'
+import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Preferences, type Read, type Saved, type SavedState, canRead, channelSlug, inChannel, isMemberOf, preferencesOf } from './domain'
+import { isSidebarSlug } from './preferences'
 import { STATUS_EMOJI, isEmoji } from './emoji'
 import { MAX_NAME, MAX_PRONOUNS, MAX_STATUS, MAX_TITLE, isTimeZone } from './profile'
 
@@ -90,6 +91,17 @@ export const setPreset =
   (memberId: string, theme: string): Op<void> =>
   data =>
     unchanged(undefined, updateMember(data, memberId, { theme }))
+
+export const setPreferences =
+  (memberId: string, preferences: Preferences): Op<void, InvalidChange> =>
+  data => {
+    if (!isSidebarSlug(preferences.sidebar)) return invalid('Unknown sidebar theme.')
+    const member = data.members.find(candidate => candidate.id === memberId)
+    if (member === undefined) return invalid('Unknown member.')
+    const before = preferencesOf(member)
+    const same = before.sidebar === preferences.sidebar && before.isCompact === preferences.isCompact && before.is24Hour === preferences.is24Hour
+    return unchanged(undefined, same ? data : updateMember(data, memberId, { preferences: { sidebar: preferences.sidebar, isCompact: preferences.isCompact, is24Hour: preferences.is24Hour } }))
+  }
 
 export type ProfileInput = Readonly<{ name: string; title: string; pronouns: string; timeZone: string }>
 
