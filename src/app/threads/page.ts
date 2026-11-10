@@ -13,6 +13,7 @@ import { requireMember } from '../auth'
 import { ChannelKind, MAX_MESSAGE, Member, Message as ChatMessage, canRead, conversationName, dayLabel, formatTime, isMemberOf, mentions } from '../domain'
 import { emojiName } from '../emoji'
 import { Workspace, type WorkspaceState } from '../store'
+import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
@@ -46,6 +47,7 @@ export const Model = S.Struct({
   members: S.Array(Member),
   threads: S.Array(ThreadCard),
   nav: Nav,
+  switcher: Switcher,
   now: S.Number,
   /** Threads showing all their replies. */
   expanded: S.Array(S.String),
@@ -65,6 +67,7 @@ export const Message = defineMessageUnion({
   PressedEnter: { targetId: S.String },
   ClickedShowAll: { threadId: S.String },
   ClickedReaction: { messageId: S.String, emoji: S.String },
+  GotSwitcher: { event: SwitcherEvent },
   ClickedToggleTheme: {},
   ClickedToggleSection: { section: S.String },
   ClickedDismissNotice: {},
@@ -82,7 +85,7 @@ export const ClientMessage = S.Union([
   Message.PressedEnter,
   Message.ClickedShowAll,
   Message.ClickedReaction,
-  Message.ClickedToggleTheme,
+  S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme,
   Message.ClickedToggleSection,
   Message.ClickedDismissNotice,
 ])
@@ -145,7 +148,7 @@ export const threadsOf = (state: WorkspaceState, me: Member): ReadonlyArray<Thre
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; threads: ReadonlyArray<ThreadCard>; nav: Nav; now: number }>
 
 export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({
-  model: { ...flags, expanded: [], drafts: {}, sending: null, notice: null, collapsed: [] },
+  model: { ...flags, switcher: initSwitcher(), expanded: [], drafts: {}, sending: null, notice: null, collapsed: [] },
 })
 
 // UPDATE
@@ -182,6 +185,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         const found = findMessage(model, messageId)
         return found !== undefined && found.reactions.some(reaction => reaction.emoji === emoji) ? { model, commands: [ToggleReaction({ messageId, emoji, actorId: model.me.id })] } : { model }
       },
+      GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ClickedToggleSection: ({ section }) => ({
         model: { ...model, collapsed: model.collapsed.includes(section) ? model.collapsed.filter(id => id !== section) : [...model.collapsed, section].slice(-8) },
@@ -317,6 +321,7 @@ const listView = (model: Model, h: HtmlBuilder<Message>): Html =>
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Threads - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+      switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
@@ -369,5 +374,6 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   update,
   view,
   subscriptions,
+  clientCommands: switcherClientCommands,
   snapshotDeps: model => [model.drafts, model.expanded, model.collapsed, model.notice],
 }

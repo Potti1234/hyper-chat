@@ -13,6 +13,7 @@ import { requireMember } from '../auth'
 import { Member, dayLabel, formatTime, handleOf } from '../domain'
 import { ChannelHit, MAX_HITS, MessageHit, parseQuery, searchOf, withFilter } from '../search'
 import { Workspace, type WorkspaceState } from '../store'
+import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
@@ -38,6 +39,7 @@ export const Model = S.Struct({
   channels: S.Array(ChannelHit),
   people: S.Array(Member),
   nav: Nav,
+  switcher: Switcher,
   now: S.Number,
 })
 export type Model = typeof Model.Type
@@ -48,6 +50,7 @@ export const Message = defineMessageUnion({
   ChangedQuery: { text: S.String },
   ClickedTab: { tab: Tab },
   ClickedFilter: { key: S.Literals(['in', 'from']), value: S.NullOr(S.String) },
+  GotSwitcher: { event: SwitcherEvent },
   ClickedToggleTheme: {},
   ChangedConnection: { isConnected: S.Boolean },
   GotResults: { messages: S.Array(MessageHit), channels: S.Array(ChannelHit), people: S.Array(Member), members: S.Array(Member), nav: Nav, me: Member, now: S.Number },
@@ -57,7 +60,7 @@ export const Message = defineMessageUnion({
 export type Message = typeof Message.Type
 
 /** What a browser may post (re-checked in update). */
-export const ClientMessage = S.Union([Message.ChangedQuery, Message.ClickedTab, Message.ClickedFilter, Message.ClickedToggleTheme])
+export const ClientMessage = S.Union([Message.ChangedQuery, Message.ClickedTab, Message.ClickedFilter, S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme])
 export type ClientMessage = typeof ClientMessage.Type
 
 // COMMAND
@@ -91,7 +94,7 @@ export const urlOf = (query: string, tab: Tab) => {
 
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; query: string; tab: Tab; nav: Nav; now: number } & ReturnType<typeof searchOf>>
 
-export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({ model: { ...flags } })
+export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({ model: { ...flags, switcher: initSwitcher() } })
 
 // UPDATE
 
@@ -109,6 +112,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ChangedQuery: ({ text }) => withQuery(model, text),
       ClickedTab: ({ tab }) => (tab === model.tab ? { model } : { model: { ...model, tab }, commands: [ReplaceUrl({ url: urlOf(model.query, tab) })] }),
       ClickedFilter: ({ key, value }) => withQuery(model, withFilter(model.query, key, value === null ? null : value.replace(/\s+/g, '-').slice(0, 80))),
+      GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ChangedConnection: ({ isConnected }) => (isConnected ? { model, commands: [FocusElement({ selector: '#search-input' })] } : { model }),
       GotResults: data => ({ model: { ...model, ...data } }),
@@ -244,6 +248,7 @@ const resultsView = (model: Model, h: HtmlBuilder<Message>): Html => {
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${model.query.trim() === '' ? 'Search' : `${model.query.trim()} - Search`} - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+      switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'search', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           region(h, { id: 'top-bar', deps: [model.query], render: () => topBar({ search: { value: model.query, onInput: text => Message.ChangedQuery({ text }) } }, h) }),
@@ -275,6 +280,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   subscriptions,
   onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   clientCommands: {
+    ...switcherClientCommands,
     FocusElement: ({ selector }) => (typeof selector === 'string' ? { focus: selector } : undefined),
     ReplaceUrl: ({ url }) => (typeof url === 'string' && url.startsWith('/search') ? { replaceUrl: url } : undefined),
   },

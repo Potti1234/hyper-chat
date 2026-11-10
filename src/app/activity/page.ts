@@ -13,6 +13,7 @@ import { ActivityItem, activityOf, hrefOf } from '../activity'
 import { requireMember } from '../auth'
 import { ACTIVITY_READ, Member, Message as ChatMessage, dayLabel, firstName, formatTime, readAt } from '../domain'
 import { Workspace, type WorkspaceState } from '../store'
+import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
@@ -35,6 +36,7 @@ export const Model = S.Struct({
   /** For a picked reply: the message that started its thread. */
   root: S.NullOr(ChatMessage),
   nav: Nav,
+  switcher: Switcher,
   now: S.Number,
   tab: Tab,
   isUnreadOnly: S.Boolean,
@@ -53,6 +55,7 @@ export type Model = typeof Model.Type
 export const Message = defineMessageUnion({
   ClickedTab: { tab: Tab },
   ClickedUnreadOnly: {},
+  GotSwitcher: { event: SwitcherEvent },
   ClickedToggleTheme: {},
   ChangedConnection: { isConnected: S.Boolean },
   GotActivity: { items: S.Array(ActivityItem), root: S.NullOr(ChatMessage), members: S.Array(Member), nav: Nav, me: Member, now: S.Number },
@@ -61,7 +64,7 @@ export const Message = defineMessageUnion({
 export type Message = typeof Message.Type
 
 /** What a browser may post (re-checked in update). */
-export const ClientMessage = S.Union([Message.ClickedTab, Message.ClickedUnreadOnly, Message.ClickedToggleTheme])
+export const ClientMessage = S.Union([Message.ClickedTab, Message.ClickedUnreadOnly, S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme])
 export type ClientMessage = typeof ClientMessage.Type
 
 // COMMAND
@@ -93,7 +96,7 @@ const rootOf = (state: WorkspaceState, items: ReadonlyArray<ActivityItem>, picke
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; items: ReadonlyArray<ActivityItem>; root: ChatMessage | null; nav: Nav; now: number; tab: Tab; picked: string | null; seenAt: number }>
 
 export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({
-  model: { ...flags, isUnreadOnly: false, markedUpTo: flags.seenAt, isConnected: false },
+  model: { ...flags, switcher: initSwitcher(), isUnreadOnly: false, markedUpTo: flags.seenAt, isConnected: false },
 })
 
 // UPDATE
@@ -113,6 +116,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
     M.tagsExhaustive({
       ClickedTab: ({ tab }) => ({ model: { ...model, tab } }),
       ClickedUnreadOnly: () => ({ model: { ...model, isUnreadOnly: !model.isUnreadOnly } }),
+      GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ChangedConnection: ({ isConnected }) => markSeen({ ...model, isConnected }),
       GotActivity: data => markSeen({ ...model, ...data, picked: data.items.some(item => item.id === model.picked) ? model.picked : null }),
@@ -280,6 +284,7 @@ const previewView = (model: Model, h: HtmlBuilder<Message>): Html => {
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Activity - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+      switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'activity', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
@@ -312,6 +317,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   update,
   view,
   subscriptions,
+  clientCommands: switcherClientCommands,
   onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   snapshotDeps: model => [model.tab, model.isUnreadOnly],
 }

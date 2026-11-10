@@ -15,6 +15,7 @@ import { requireMember } from '../auth'
 import { MAX_MESSAGE, Member, dayLabel, firstName, formatTime, inChannel, isMemberOf } from '../domain'
 import { Workspace, type WorkspaceState } from '../store'
 import { MAX_DM_PEOPLE } from '../workspace'
+import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { emptyNav, hasUnread, Nav, navOf, NavRow, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
@@ -39,6 +40,7 @@ export const Model = S.Struct({
   members: S.Array(Member),
   dms: S.Array(DmRow),
   nav: Nav,
+  switcher: Switcher,
   now: S.Number,
   /** "Find a DM". */
   filter: S.String,
@@ -63,6 +65,7 @@ export const Message = defineMessageUnion({
   ClickedRemovePerson: { memberId: S.String },
   SubmittedMessage: {},
   PressedKey: { key: S.Literals(['Enter', 'ArrowDown', 'ArrowUp', 'Backspace', 'Escape']), targetId: S.String },
+  GotSwitcher: { event: SwitcherEvent },
   ClickedToggleTheme: {},
   ClickedDismissNotice: {},
   GotDms: { dms: S.Array(DmRow), members: S.Array(Member), nav: Nav, me: Member, now: S.Number },
@@ -81,7 +84,7 @@ export const ClientMessage = S.Union([
   Message.ClickedRemovePerson,
   Message.SubmittedMessage,
   Message.PressedKey,
-  Message.ClickedToggleTheme,
+  S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme,
   Message.ClickedDismissNotice,
 ])
 export type ClientMessage = typeof ClientMessage.Type
@@ -163,7 +166,7 @@ export const existingOf = (model: Model): DmRow | undefined => {
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; dms: ReadonlyArray<DmRow>; nav: Nav; now: number; to: ReadonlyArray<string> }>
 
 export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({
-  model: { ...flags, filter: '', toQuery: '', toActive: 0, draft: '', isSending: false, notice: null },
+  model: { ...flags, switcher: initSwitcher(), filter: '', toQuery: '', toActive: 0, draft: '', isSending: false, notice: null },
 })
 
 // UPDATE
@@ -212,6 +215,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ClickedRemovePerson: ({ memberId }) => ({ model: { ...model, to: model.to.filter(id => id !== memberId) } }),
       SubmittedMessage: () => send(model),
       PressedKey: ({ key, targetId }) => pressed(model, key, targetId),
+      GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ClickedDismissNotice: () => ({ model: { ...model, notice: null } }),
       GotDms: data => {
@@ -378,6 +382,7 @@ const bodyView = (model: Model, h: HtmlBuilder<Message>): Html => {
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Direct messages - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+      switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'dms', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
@@ -437,6 +442,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   subscriptions,
   onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   clientCommands: {
+    ...switcherClientCommands,
     FocusElement: ({ selector }) => (typeof selector === 'string' ? { focus: selector } : undefined),
     LoadUrl: ({ url }) => (typeof url === 'string' && url.startsWith('/client/') ? { load: url } : undefined),
   },

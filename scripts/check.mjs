@@ -7,7 +7,8 @@ import { chromium } from 'playwright'
    "also send to channel", a thread URL), unread channels, the Threads view,
    DMs, channel management (browse, create, join, topic, members, leave),
    Activity (mentions, filters, opening an item), Mark unread, Saved for
-   later (the Later page), pins and search.
+   later (the Later page), pins, search and the
+   Ctrl+K quick switcher.
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -337,6 +338,31 @@ try {
   await avery.click('#search-hits a:has-text("View in channel")')
   await avery.waitForURL(/\/client\/ch_general/, { timeout: 5000 }).catch(() => {})
   check('a result opens its conversation', await sees(avery, `Found the ${needle}`))
+
+  // The quick switcher (Ctrl+K) on any page
+  await visit(avery, '/later')
+  await avery.keyboard.press('Control+k')
+  check('Ctrl+K opens the quick switcher', await until(avery, () => document.activeElement?.id === 'switcher-input'))
+  await avery.keyboard.type('prod')
+  check('it lists matching conversations and a search row', await until(avery, () => document.querySelector('#switcher-items [data-active=true]')?.textContent.includes('product-launch') && document.querySelector('#switch-search') !== null))
+  await avery.keyboard.press('ArrowDown')
+  check('arrows move the selection', await until(avery, () => document.querySelector('#switch-search')?.dataset.active === 'true'))
+  await avery.keyboard.press('ArrowUp')
+  await avery.keyboard.press('Enter')
+  await avery.waitForURL(/\/client\/ch_launch/, { timeout: 5000 }).catch(() => {})
+  check('Enter jumps to the conversation', /\/client\/ch_launch/.test(avery.url()))
+  await live(avery, () => avery.reload())
+  await avery.keyboard.press('Control+k')
+  await until(avery, () => document.activeElement?.id === 'switcher-input')
+  await avery.keyboard.press('Escape')
+  check('Escape closes it', await until(avery, () => document.querySelector('#switcher-input') === null || document.querySelector('#switcher-input').offsetParent === null))
+  await avery.keyboard.press('Control+k')
+  await until(avery, () => document.activeElement?.id === 'switcher-input')
+  await avery.keyboard.type('casey')
+  await until(avery, () => document.querySelector('#switcher-items [role=option]')?.textContent.includes('Casey'))
+  await avery.locator('#switcher-items [role=option]').first().click()
+  await avery.waitForURL(/\/client\/dm_/, { timeout: 5000 }).catch(() => {})
+  check('a click opens the DM', /\/client\/dm_/.test(avery.url()))
 
   for (const { errors } of people) for (const error of errors) check('no browser errors', false, error)
 } finally {

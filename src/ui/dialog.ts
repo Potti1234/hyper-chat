@@ -38,6 +38,14 @@ const OVERLAY_CLASS =
 const CONTENT_CLASS =
   'bg-background relative z-50 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border p-6 shadow-lg outline-none sm:max-w-lg transition duration-200 ease-out motion-reduce:transition-none data-[closed]:opacity-0 data-[closed]:scale-95'
 
+/** Named looks for the panel. `switcher` is the Ctrl+K jump-to dialog: pinned near the top, wider. */
+const VARIANTS = {
+  default: '',
+  switcher: 'top-[12vh] self-start sm:max-w-[560px]',
+} as const
+
+export type DialogVariant = keyof typeof VARIANTS
+
 const HEADER_CLASS = 'flex flex-col gap-2 text-center sm:text-left'
 
 export const FOOTER_CLASS =
@@ -142,6 +150,7 @@ export type DialogProps<Msg> = Readonly<{
    *  bound part builders while the Foldkit model still owns behavior. */
   layout?: (parts: DialogParts<Msg>) => ReadonlyArray<Html>
   showCloseButton?: boolean
+  variant?: DialogVariant
   class?: string
 }>
 
@@ -239,7 +248,7 @@ export const dialog = <Msg>(
                     ...panel,
                     ...panelFocusAttributes,
                     hd.DataAttribute('slot', 'dialog-content'),
-                    hd.Class(cn(CONTENT_CLASS, props.class)),
+                    hd.Class(cn(CONTENT_CLASS, VARIANTS[props.variant ?? 'default'], props.class)),
                   ],
                   content,
                 ),

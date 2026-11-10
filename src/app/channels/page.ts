@@ -14,6 +14,7 @@ import { input } from '@/ui/input'
 import { requireMember } from '../auth'
 import { ChannelKind, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, Member, canRead, channelSlug, compareChannels, isMemberOf } from '../domain'
 import { Workspace, type WorkspaceState } from '../store'
+import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, sidebar, topBar, WORKSPACE_NAME } from '../view/shell'
 
@@ -41,6 +42,7 @@ export const Model = S.Struct({
   me: Member,
   rows: S.Array(ChannelRow),
   nav: Nav,
+  switcher: Switcher,
   members: S.Array(Member),
   collapsed: S.Array(S.String),
   filter: S.String,
@@ -66,6 +68,7 @@ export const Message = defineMessageUnion({
   ChangedDescription: { text: S.String },
   ToggledPrivate: { isChecked: S.Boolean },
   SubmittedCreate: {},
+  GotSwitcher: { event: SwitcherEvent },
   ClickedToggleTheme: {},
   ClickedToggleSection: { section: S.String },
   ClickedDismissNotice: {},
@@ -84,7 +87,7 @@ export const ClientMessage = S.Union([
   Message.ClickedCreate,
   Message.ToggledPrivate,
   Message.SubmittedCreate,
-  Message.ClickedToggleTheme,
+  S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme,
   Message.ClickedToggleSection,
   Message.ClickedDismissNotice,
   S.TaggedStruct('GotCreateDialog', { message: Dialog.Message.RequestedClose }),
@@ -160,7 +163,8 @@ export type Flags = Readonly<{ me: Member; rows: ReadonlyArray<ChannelRow>; nav:
 const emptyForm = { name: '', description: '', isPrivate: false, isSaving: false }
 
 export const init = ({ isCreating, ...flags }: Flags): Update.Return<Model, Message, Workspace> => {
-  const base: Model = { ...flags, collapsed: [], filter: '', show: 'all', pending: null, create: Dialog.init({ id: 'create-channel' }), form: emptyForm, notice: null }
+  const base: Model = { ...flags,
+    switcher: initSwitcher(), collapsed: [], filter: '', show: 'all', pending: null, create: Dialog.init({ id: 'create-channel' }), form: emptyForm, notice: null }
   return isCreating ? withCreate(base, Dialog.open(base.create)) : { model: base }
 }
 
@@ -207,6 +211,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ChangedDescription: ({ text }) => ({ model: { ...model, form: { ...model.form, description: text.slice(0, MAX_DESCRIPTION + 20) } } }),
       ToggledPrivate: ({ isChecked }) => ({ model: { ...model, form: { ...model.form, isPrivate: isChecked } } }),
       SubmittedCreate: () => create(model),
+      GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ClickedToggleSection: ({ section }) => ({ model: { ...model, collapsed: model.collapsed.includes(section) ? model.collapsed.filter(id => id !== section) : [...model.collapsed, section].slice(-8) } }),
       ClickedDismissNotice: () => ({ model: { ...model, notice: null } }),
@@ -324,6 +329,7 @@ const createDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `All channels - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+      switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
@@ -370,6 +376,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   view,
   subscriptions,
   clientCommands: {
+    ...switcherClientCommands,
     FocusElement: ({ selector }) => (typeof selector === 'string' ? { focus: selector } : undefined),
     LoadUrl: ({ url }) => (typeof url === 'string' && url.startsWith('/client/') ? { load: url } : undefined),
   },

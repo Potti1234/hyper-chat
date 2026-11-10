@@ -29,8 +29,9 @@ const measure = async (page, selector, label) => {
   const box = await page.evaluate(selector => {
     const panel = document.querySelector(selector)
     const rect = panel.getBoundingClientRect()
+    // Anchored panels get an inline max-width; their natural width is measured without it.
     const limit = panel.style.maxWidth
-    panel.style.maxWidth = 'none'
+    if (limit !== '') panel.style.maxWidth = 'none'
     const natural = panel.getBoundingClientRect().width
     panel.style.maxWidth = limit
     return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: innerWidth, height: innerHeight, panelWidth: rect.width, natural }
@@ -110,6 +111,14 @@ try {
     await page.keyboard.type('a')
     if (await page.waitForSelector('#people-picker', { state: 'visible', timeout: TIMEOUT }).then(() => true, () => false)) await measure(page, '#people-picker', `${size.width}×${size.height} /dms: people suggestions`)
     else failures.push(`${size.width}×${size.height} /dms: no people suggestions`)
+    // The quick switcher (Ctrl+K).
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Control+k')
+    if (await page.waitForSelector('#switcher-input', { state: 'visible', timeout: TIMEOUT }).then(() => true, () => false)) {
+      await page.keyboard.type('a')
+      await page.waitForTimeout(200)
+      await measure(page, '#switcher-panel', `${size.width}×${size.height} /dms: quick switcher`)
+    } else failures.push(`${size.width}×${size.height} /dms: Ctrl+K opened nothing`)
     await context.close()
   }
 } finally {

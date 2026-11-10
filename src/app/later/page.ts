@@ -11,6 +11,7 @@ import { button, buttonLink } from '@/ui/button'
 import { requireMember } from '../auth'
 import { ChannelKind, Member, Message as ChatMessage, SavedState, canRead, conversationName, dayLabel, formatTime } from '../domain'
 import { Workspace, type WorkspaceState } from '../store'
+import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
@@ -37,6 +38,7 @@ export const Model = S.Struct({
   members: S.Array(Member),
   items: S.Array(LaterItem),
   nav: Nav,
+  switcher: Switcher,
   now: S.Number,
   tab: SavedState,
   notice: S.NullOr(S.String),
@@ -49,6 +51,7 @@ export const Message = defineMessageUnion({
   ClickedTab: { tab: SavedState },
   ClickedSetState: { messageId: S.String, state: SavedState },
   ClickedRemove: { messageId: S.String },
+  GotSwitcher: { event: SwitcherEvent },
   ClickedToggleTheme: {},
   GotLater: { items: S.Array(LaterItem), members: S.Array(Member), nav: Nav, me: Member, now: S.Number },
   CompletedChange: {},
@@ -57,7 +60,7 @@ export const Message = defineMessageUnion({
 export type Message = typeof Message.Type
 
 /** What a browser may post (re-checked in update). */
-export const ClientMessage = S.Union([Message.ClickedTab, Message.ClickedSetState, Message.ClickedRemove, Message.ClickedToggleTheme])
+export const ClientMessage = S.Union([Message.ClickedTab, Message.ClickedSetState, Message.ClickedRemove, S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme])
 export type ClientMessage = typeof ClientMessage.Type
 
 // COMMAND
@@ -104,7 +107,7 @@ export const shownOf = (model: Pick<Model, 'items' | 'tab'>): ReadonlyArray<Late
 
 export type Flags = Readonly<{ me: Member; members: ReadonlyArray<Member>; items: ReadonlyArray<LaterItem>; nav: Nav; now: number; tab: SavedState }>
 
-export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({ model: { ...flags, notice: null } })
+export const init = (flags: Flags): Update.Return<Model, Message, Workspace> => ({ model: { ...flags, switcher: initSwitcher(), notice: null } })
 
 // UPDATE
 
@@ -127,6 +130,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
           : { model },
       ClickedRemove: ({ messageId }) =>
         model.items.some(item => item.message.id === messageId) ? { model: withState(model, messageId, null), commands: [RemoveSaved({ messageId, memberId: model.me.id })] } : { model },
+      GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       GotLater: data => ({ model: { ...model, ...data } }),
       CompletedChange: () => ({ model }),
@@ -230,6 +234,7 @@ const listView = (model: Model, h: HtmlBuilder<Message>): Html => {
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `Later - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+      switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'later', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
@@ -258,5 +263,6 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   update,
   view,
   subscriptions,
+  clientCommands: switcherClientCommands,
   snapshotDeps: model => [model.tab],
 }

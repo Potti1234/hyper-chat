@@ -96,7 +96,7 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Unreads | Bold rows, red mention pills, "All unreads" view | **done** (bold rows, mention pills, Activity badge; no separate "All unreads" view yet) |
 | Activity | Mentions, reactions to your messages, thread replies | **done** (filters: all, mentions, threads, reactions; unreads only) |
 | Search | Messages, channels, people; modifiers `in:#x`, `from:@y`, `has:link`, before/after | **done** (top bar field, `/search` with Messages / Channels / People, `in:` and `from:` with chips, live results; no `has:` or dates yet) |
-| Quick switcher | Ctrl/Cmd+K: jump to a channel or person | **planned** |
+| Quick switcher | Ctrl/Cmd+K: jump to a channel or person | **done** (on every page: your channels and DMs, people, and a "Search for …" row; arrows + Enter) |
 | Keyboard shortcuts | Alt+↑/↓ previous/next channel, Esc marks read, ↑ edits your last message, Ctrl+/ shortcut list | **planned** |
 | History ← → | Browser-like back/forward | Browser back/forward (each view is a URL) — **done** by design |
 

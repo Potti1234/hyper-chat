@@ -17,6 +17,7 @@ import { requireMember } from '../auth'
 import { Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, dmPartners, formatTime, inChannel, isMemberOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState } from '../store'
+import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { messageText } from '../view/message'
@@ -63,6 +64,7 @@ export const Model = S.Struct({
   /** Your messages saved for later (in progress) here. */
   saved: S.Array(S.String),
   nav: Nav,
+  switcher: Switcher,
   now: S.Number,
   /** Read up to here when the page opened: the "New" line. */
   readMarker: S.Number,
@@ -106,6 +108,7 @@ export const Message = defineMessageUnion({
   ChangedDraft: { text: S.String },
   SubmittedDraft: {},
   PressedEnter: { targetId: S.String },
+  GotSwitcher: { event: SwitcherEvent },
   ClickedToggleTheme: {},
   ClickedToggleSection: { section: S.String },
   ClickedDismissNotice: {},
@@ -163,7 +166,7 @@ export type Message = typeof Message.Type
  *  through the composer's handler; Enter through a key binding. */
 export const ClientMessage = S.Union([
   Message.SubmittedDraft,
-  Message.ClickedToggleTheme,
+  S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme,
   Message.ClickedToggleSection,
   Message.ClickedDismissNotice,
   Message.ClickedReaction,
@@ -388,6 +391,7 @@ const closedAbout = { tab: 'about', field: null, value: '', query: '', isSaving:
 export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Message, Workspace> => ({
   model: {
     ...flags,
+    switcher: initSwitcher(),
     thread: threadId === null ? null : { id: threadId, draft: '', alsoSend: false, isSending: false },
     markedUpTo: flags.readMarker,
     draft: '',
@@ -559,7 +563,7 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       SubmittedDraft: () => send(model),
       PressedEnter: ({ targetId }) =>
         targetId === 'detail-field' ? saveField(model) : targetId === 'composer' ? send(model) : targetId === 'thread-composer' ? sendReply(model) : targetId === 'edit-composer' ? saveEdit(model) : { model },
-      PressedEscape: () => escape(model),
+      PressedEscape: () => (model.switcher.dialog.isOpen ? { model } : escape(model)),
       // Up in an empty composer edits your last message (Slack).
       PressedUp: ({ targetId }) => {
         if (model.editing !== null) return { model }
@@ -626,6 +630,7 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       GotConfirmDialog: ({ message }) => withConfirm(model, Dialog.update(model.confirm, message)),
       SucceededEdit: () => ({ model: withFocus({ ...model, editing: null }, composerOf(model.editing?.where ?? 'channel')) }),
       SucceededDelete: () => ({ model: withFocus(model, '#composer') }),
+      GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
       ClickedToggleSection: ({ section }) => ({
         model: { ...model, collapsed: model.collapsed.includes(section) ? model.collapsed.filter(id => id !== section) : [...model.collapsed, section].slice(-8) },
@@ -1240,6 +1245,7 @@ const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: `${model.channel === null || model.channel.kind === 'dm' ? '' : '#'}${titleOf(model)} - ${WORKSPACE_NAME} - hyper-chat`,
   body: pageRoot({ isDark: model.me.isDark, theme: model.me.theme, children: [
+      switcherRegion(model, event => Message.GotSwitcher({ event }), h),
       region(h, { id: 'rail', deps: [model.me, hasUnread(model.nav), model.nav.activity], render: () => rail({ me: model.me, active: 'home', onToggleTheme: Message.ClickedToggleTheme(), nav: model.nav }, h) }),
       box({ class: slack.frame, children: [
           topBar({}, h),
@@ -1321,6 +1327,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace> =
   subscriptions,
   onConnectionChange: isConnected => Message.ChangedConnection({ isConnected }),
   clientCommands: {
+    ...switcherClientCommands,
     FocusElement: ({ selector }) => (typeof selector === 'string' ? { focus: selector } : undefined),
     ReplaceUrl: ({ url }) => (typeof url === 'string' ? { replaceUrl: url } : undefined),
     LoadUrl: ({ url }) => (typeof url === 'string' && url.startsWith('/') ? { load: url } : undefined),
