@@ -81,7 +81,7 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Save for later | Bookmark a message, Later view (in progress / done) | **done** (Later page with In progress / Completed) |
 | Copy link | Link to a message | **planned** |
 | Mark unread | From the ⋮ menu: unread from here | **done** (also from the hover menu on others’ messages) |
-| Files | Upload in the composer (📎 / drop), image previews, Files tab | **planned** |
+| Files | Upload in the composer (📎 / drop), image previews, Files tab | **done**: the + button or a drop on the channel/DM composer uploads up to 10 files of up to 10 MB; they wait as removable cards and a message may be only files. PNG, JPEG, GIF and WebP (recognised by their bytes) show inline and open full size; anything else is a download card. Served only to people who can read the conversation. Not yet: uploads in thread replies and the Files tab |
 | Typing indicator | "Alex is typing…" under the composer | **planned** |
 | Scheduled messages, reminders | Send later, "Remind me about this" | **planned** (later) |
 | Link unfurls | Preview cards for URLs | **out of scope** (no outbound fetching) |

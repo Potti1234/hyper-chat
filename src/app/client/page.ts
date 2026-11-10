@@ -1,6 +1,7 @@
 import { Clock, Effect, Match as M, Schema as S, Stream } from 'effect'
 import { Command, Subscription, type Update } from 'foldkit'
 import type { Document, Html, HtmlBuilder } from 'foldkit/html'
+import * as FoldkitFile from 'foldkit/file'
 import { defineMessageUnion } from 'foldkit/message'
 
 import { PageNotFound, PageRedirect, type PageRequest, type Program, keyBindings, region } from '@hyper-effect/core'
@@ -9,19 +10,21 @@ import * as Icon from '@/lib/icon'
 import { anchoredStyle } from '@/lib/anchored'
 import { button } from '@/ui/button'
 import { checkbox } from '@/ui/checkbox'
+import { fileButton } from '@/ui/file-button'
 import * as Dialog from '@/ui/dialog'
 import { input } from '@/ui/input'
 import { textarea } from '@/ui/textarea'
 
 import { requireMember } from '../auth'
-import { Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, preferencesOf, readAt } from '../domain'
+import { Files, MAX_FILE_BYTES } from '../files'
+import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, preferencesOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { formatBar } from '../view/composer'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { authorName, messageText } from '../view/message'
+import { attachmentList, authorName, messageText, uploadChips } from '../view/message'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, sidebar, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* A conversation (channel or direct message), Slack's main view: the frame
@@ -72,6 +75,10 @@ export const Model = S.Struct({
   /** Marked read up to here (a MarkRead Command). */
   markedUpTo: S.Number,
   draft: S.String,
+  /** Files stored for the next message (from StoreFile, never the browser). */
+  uploads: S.Array(Attachment),
+  /** Files still being stored. */
+  uploading: S.Number,
   isConnected: S.Boolean,
   isSending: S.Boolean,
   notice: S.NullOr(S.String),
@@ -107,6 +114,10 @@ const placeholderOf = (model: Model) =>
 
 export const Message = defineMessageUnion({
   ChangedDraft: { text: S.String },
+  ChoseFiles: { files: S.Array(FoldkitFile.File) },
+  StoredFile: { file: Attachment },
+  RejectedFile: { reason: S.String },
+  ClickedRemoveUpload: { id: S.String },
   SubmittedDraft: {},
   PressedEnter: { targetId: S.String },
   GotSwitcher: { event: SwitcherEvent },
@@ -167,6 +178,7 @@ export type Message = typeof Message.Type
  *  through the composer's handler; Enter through a key binding. */
 export const ClientMessage = S.Union([
   Message.SubmittedDraft,
+  Message.ClickedRemoveUpload,
   S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme,
   Message.ClickedToggleSection,
   Message.ClickedDismissNotice,
@@ -204,11 +216,21 @@ export type ClientMessage = typeof ClientMessage.Type
 
 // COMMAND
 
+export const StoreFile = Command.define('StoreFile', {
+  args: { file: FoldkitFile.File, uploaderId: S.String },
+  messages: [Message.StoredFile, Message.RejectedFile],
+  execute: ({ file, uploaderId }) =>
+    Files.use(files => files.put(file, uploaderId)).pipe(
+      Effect.map(stored => Message.StoredFile({ file: stored })),
+      Effect.catchTag('FileRejected', ({ reason }) => Effect.succeed(Message.RejectedFile({ reason }))),
+    ),
+})
+
 export const SendMessage = Command.define('SendMessage', {
-  args: { channelId: S.String, text: S.String, actorId: S.String },
+  args: { channelId: S.String, text: S.String, files: S.Array(Attachment), actorId: S.String },
   messages: [Message.SucceededSend, Message.FailedChange],
-  execute: ({ channelId, text, actorId }) =>
-    Workspace.use(workspace => workspace.postMessage(channelId, text, actorId)).pipe(
+  execute: ({ channelId, text, files, actorId }) =>
+    Workspace.use(workspace => workspace.postMessage(channelId, text, actorId, { files })).pipe(
       Effect.as(Message.SucceededSend()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
@@ -389,13 +411,15 @@ export type Flags = Readonly<{
 
 const closedAbout = { tab: 'about', field: null, value: '', query: '', isSaving: false } as const
 
-export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Message, Workspace> => ({
+export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Message, Workspace | Files> => ({
   model: {
     ...flags,
     switcher: initSwitcher(),
     thread: threadId === null ? null : { id: threadId, draft: '', alsoSend: false, isSending: false },
     markedUpTo: flags.readMarker,
     draft: '',
+    uploads: [],
+    uploading: 0,
     isConnected: false,
     isSending: false,
     notice: null,
@@ -415,7 +439,7 @@ export const init = ({ threadId, ...flags }: Flags): Update.Return<Model, Messag
 
 // UPDATE
 
-type UpdateReturn = Update.Return<Model, Message, Workspace>
+type UpdateReturn = Update.Return<Model, Message, Workspace | Files>
 
 const newest = (messages: ReadonlyArray<ChatMessage>) => messages.reduce((latest, message) => Math.max(latest, message.createdAt), 0)
 
@@ -429,10 +453,20 @@ const markRead = (result: UpdateReturn): UpdateReturn => {
 
 const send = (model: Model): UpdateReturn => {
   const text = model.draft.trim()
-  if (text === '' || model.isSending) return { model }
+  if ((text === '' && model.uploads.length === 0) || model.isSending || model.uploading > 0) return { model }
   if (!canWrite(model)) return { model: { ...model, notice: 'Join this channel to write in it.' } }
   if (text.length > MAX_MESSAGE) return { model: { ...model, notice: `Keep messages under ${MAX_MESSAGE} characters.` } }
-  return { model: { ...model, isSending: true }, commands: [SendMessage({ channelId: model.channelId, text, actorId: model.me.id })] }
+  return { model: { ...model, isSending: true }, commands: [SendMessage({ channelId: model.channelId, text, files: model.uploads, actorId: model.me.id })] }
+}
+
+/** Stores chosen or dropped files for the next message, one Command each. */
+const chooseFiles = (model: Model, files: ReadonlyArray<File>): UpdateReturn => {
+  if (files.length === 0) return { model }
+  if (!canWrite(model)) return { model: { ...model, notice: 'Join this channel to share files in it.' } }
+  if (model.uploads.length + model.uploading + files.length > MAX_FILES) return { model: { ...model, notice: `Share at most ${MAX_FILES} files at once.` } }
+  const tooLarge = files.find(file => file.size > MAX_FILE_BYTES)
+  if (tooLarge !== undefined) return { model: { ...model, notice: `${tooLarge.name} is larger than 10 MB.` } }
+  return { model: { ...model, uploading: model.uploading + files.length, notice: null }, commands: files.map(file => StoreFile({ file, uploaderId: model.me.id })) }
 }
 
 /** A message with its thread: replies are kept to the thread they belong to. */
@@ -561,6 +595,10 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
     M.withReturnType<UpdateReturn>(),
     M.tagsExhaustive({
       ChangedDraft: ({ text }) => ({ model: { ...model, draft: text.slice(0, MAX_MESSAGE + 100) } }),
+      ChoseFiles: ({ files }) => chooseFiles(model, files),
+      StoredFile: ({ file }) => ({ model: { ...model, uploading: Math.max(0, model.uploading - 1), uploads: [...model.uploads, file] } }),
+      RejectedFile: ({ reason }) => ({ model: { ...model, uploading: Math.max(0, model.uploading - 1), notice: reason } }),
+      ClickedRemoveUpload: ({ id }) => ({ model: { ...model, uploads: model.uploads.filter(file => file.id !== id) } }),
       SubmittedDraft: () => send(model),
       PressedEnter: ({ targetId }) =>
         targetId === 'detail-field' ? saveField(model) : targetId === 'composer' ? send(model) : targetId === 'thread-composer' ? sendReply(model) : targetId === 'edit-composer' ? saveEdit(model) : { model },
@@ -640,7 +678,7 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       ChangedConnection: ({ isConnected }) => markRead({ model: { ...model, isConnected } }),
       GotChannel: slice => markRead({ model: withoutGone({ ...model, ...slice }) }),
       // Sent: the composer empties and the "New" line goes (you are up to date).
-      SucceededSend: () => ({ model: { ...model, draft: '', isSending: false, readMarker: Number.MAX_SAFE_INTEGER, seq: model.seq + 1, focus: { selector: '#composer', seq: model.seq + 1 } } }),
+      SucceededSend: () => ({ model: { ...model, draft: '', uploads: [], isSending: false, readMarker: Number.MAX_SAFE_INTEGER, seq: model.seq + 1, focus: { selector: '#composer', seq: model.seq + 1 } } }),
       ClickedJoin: () => {
         const channel = model.channel
         if (channel === null || channel.kind !== 'public' || channel.isArchived || isMemberOf(channel, model.me.id) || model.isJoining) return { model }
@@ -926,6 +964,7 @@ const messageView = (model: Model, message: ChatMessage, isFirst: boolean, where
                     ...messageText(message.text, model.members, h),
                     ...(message.editedAt === null ? [] : [box({ as: 'span', class: 'ml-1 text-[12px] text-muted-foreground', attributes: [h.Title(`Edited ${formatTime(message.editedAt, model.me)}`)], children: ['(edited)'] }, h)]),
                   ] }, h),
+                ...attachmentList(message.files, h),
                 ...(message.reactions.length === 0 ? [] : [reactionsView(model, message, where, h)]),
                 ...(summary === null ? [] : [summaryView(model, message, summary, h)]),
               ]),
@@ -1229,12 +1268,14 @@ const headerView = (model: Model, h: HtmlBuilder<Message>): Html => {
 const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
   box({ class: 'shrink-0', attributes: [h.Id('composer-area')], children: [
       canWrite(model)
-        ? box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedDraft())], children: [
+        ? box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedDraft()), h.AllowDrop(), h.OnDropFiles(files => Message.ChoseFiles({ files }))], children: [
               formatBar(h),
               textarea({ id: 'composer', value: model.draft, rows: 1, placeholder: placeholderOf(model), onInput: text => Message.ChangedDraft({ text }), ariaLabel: placeholderOf(model), resize: 'none', variant: 'slack-composer' }, h),
+              ...uploadChips({ uploads: model.uploads, uploading: model.uploading, onRemove: id => Message.ClickedRemoveUpload({ id }) }, h),
               box({ class: 'flex items-center gap-1 px-2 pb-1.5', children: [
+                  fileButton({ id: 'attach', ariaLabel: 'Attach files', title: 'Upload from your computer', isMultiple: true, size: 'icon-md', isDisabled: model.isSending, onFiles: files => Message.ChoseFiles({ files }), children: [Icon.icon('plus', {}, h)] }, h),
                   box({ as: 'span', class: 'flex-1 text-[12px] text-muted-foreground', children: [model.draft.includes('\n') ? 'Shift + Return to add a new line' : ''] }, h),
-                  button({ id: 'send', variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send now', title: 'Send now', isDisabled: model.draft.trim() === '' || model.isSending, children: [Icon.icon('send', {}, h)] }, h),
+                  button({ id: 'send', variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send now', title: 'Send now', isDisabled: (model.draft.trim() === '' && model.uploads.length === 0) || model.uploading > 0 || model.isSending, children: [Icon.icon('send', {}, h)] }, h),
                 ] }, h),
             ] }, h)
         : box({ class: 'mx-5 mb-5 flex flex-col items-center gap-3 rounded-lg border bg-muted px-4 py-5 text-center text-[15px]', attributes: [h.Id('composer-readonly')], children: [
@@ -1265,7 +1306,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
           box({ as: 'main', class: slack.main, attributes: model.thread === null ? [] : [h.DataAttribute('split', '')], children: [
               region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id, model.pins.length], render: () => headerView(model, h) }),
               region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id, model.saved, model.pins, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
-              region(h, { id: 'composer-area', deps: [model.draft, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
+              region(h, { id: 'composer-area', deps: [model.draft, model.uploads, model.uploading, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
             ] }, h),
           region(h, { id: 'thread', deps: [model.thread, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now, model.saved, model.me.timeZone, model.me.preferences], render: () => threadView(model, h) }),
         ] }, h),
@@ -1308,7 +1349,7 @@ export const homeChannel = (state: WorkspaceState, me: Member): string | undefin
   return (nav.channels.find(row => row.label === 'general') ?? nav.channels[0] ?? nav.dms[0])?.id
 }
 
-export const program: Program<Model, Message, ClientMessage, Flags, Workspace> = {
+export const program: Program<Model, Message, ClientMessage, Flags, Workspace | Files> = {
   name: 'client',
   Model,
   ClientMessage,

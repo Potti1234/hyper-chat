@@ -14,7 +14,7 @@ import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { authorName, messageText } from '../view/message'
+import { attachmentList, authorName, messageText } from '../view/message'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's Later: messages you saved, in progress or completed, newest
@@ -207,6 +207,7 @@ const itemView = (model: Model, item: LaterItem, h: HtmlBuilder<Message>): Html 
               box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(item.message.createdAt, model.now, model.me)} at ${formatTime(item.message.createdAt, model.me)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: messageText(item.message.text, model.members, h) }, h),
+          ...attachmentList(item.message.files, h),
         ] }, h),
       box({ class: 'flex shrink-0 items-start gap-1', children: [
           item.state === 'saved'

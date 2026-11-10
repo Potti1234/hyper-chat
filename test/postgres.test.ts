@@ -1,7 +1,8 @@
 import { assert, describe, it } from '@effect/vitest'
-import { Context, Effect, Exit, Layer, Scope, Stream } from 'effect'
+import { Context, Effect, Exit, Layer, Option, Scope, Stream } from 'effect'
 import { SqlClient } from 'effect/sql'
 
+import * as Files from '@/app/files'
 import * as Postgres from '@/app/postgres'
 import { demoData } from '@/app/seed'
 import { Workspace } from '@/app/store'
@@ -18,10 +19,12 @@ const url = process.env['TEST_DATABASE_URL']
 
 const reset = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
-  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, saves, passwords, presence CASCADE`
+  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, saves, passwords, presence, files CASCADE`
 }).pipe(Effect.provide(Postgres.clientLayerFor(url ?? '')))
 
 /** One store, as one app process would build it. */
+const fileStore = Effect.map(Layer.build(Files.postgresLayer.pipe(Layer.provide(Postgres.clientLayerFor(url ?? '')))), context => Context.get(context, Files.Files))
+
 const store = Effect.map(Layer.build(Postgres.layer.pipe(Layer.provide(Postgres.clientLayerFor(url ?? '')))), context => Context.get(context, Workspace))
 
 describe.skipIf(url === undefined)('workspace in Postgres', () => {
@@ -77,6 +80,23 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         assert.strictEqual(fresh.messages.length, (yield* two.current).messages.length)
         assert.isFalse(fresh.messages.some(item => item.id === reply.id))
         assert.isFalse(fresh.saves.some(saved => saved.messageId === message.id))
+      }),
+    ),
+  )
+
+  it.live('keeps uploaded files and messages that share them across restarts', () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* reset
+        const one = yield* store
+        yield* one.seedDemo(demoData(Date.UTC(2026, 10, 9, 12)))
+        const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+        const file = yield* (yield* fileStore).put(new File([png], 'diagram.png'), 'mem_avery')
+        const message = yield* one.postMessage('ch_general', '', 'mem_avery', { files: [file] })
+        const restarted = yield* (yield* store).current
+        assert.deepStrictEqual(restarted.messages.find(item => item.id === message.id)?.files, [file])
+        const stored = Option.getOrThrow(yield* (yield* fileStore).get(file.id))
+        assert.deepStrictEqual([stored.type, stored.uploaderId, [...stored.bytes]], ['image/png', 'mem_avery', [...png]])
       }),
     ),
   )

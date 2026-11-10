@@ -171,6 +171,20 @@ export const Reaction = S.Struct({
 })
 export type Reaction = typeof Reaction.Type
 
+/** A file shared in a message (its bytes are in the Files service, files.ts). */
+export const Attachment = S.Struct({
+  id: S.String,
+  name: S.String,
+  /** The type its bytes were recognised as; images are shown inline. */
+  type: S.String,
+  size: S.Number,
+})
+export type Attachment = typeof Attachment.Type
+
+export const isImage = (file: Attachment): boolean => file.type.startsWith('image/')
+
+export const MAX_FILES = 10
+
 export const Message = S.Struct({
   id: S.String,
   channelId: S.String,
@@ -185,6 +199,8 @@ export const Message = S.Struct({
   alsoInChannel: S.Boolean,
   /** Who pinned it to the conversation. */
   pinnedBy: S.optionalKey(S.String),
+  /** Files shared with it. */
+  files: S.optionalKey(S.Array(Attachment)),
   isDemo: S.Boolean,
 })
 export type Message = typeof Message.Type

@@ -16,7 +16,7 @@ import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { authorName, messageText } from '../view/message'
+import { attachmentList, authorName, messageText } from '../view/message'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's Activity tab: mentions of you, replies in your threads and
@@ -255,6 +255,7 @@ const messageView = (model: Model, message: ChatMessage, h: HtmlBuilder<Message>
               box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(message.createdAt, model.now, model.me)} at ${formatTime(message.createdAt, model.me)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, children: messageText(message.text, model.members, h) }, h),
+          ...attachmentList(message.files, h),
           ...(message.reactions.length === 0
             ? []
             : [box({ class: 'mt-1 flex flex-wrap gap-1', children: message.reactions.map(reaction =>

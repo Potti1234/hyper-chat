@@ -9,7 +9,7 @@ import { chromium } from 'playwright'
    Activity (mentions, filters, opening an item), Mark unread, Saved for
    later (the Later page), pins, search and the
    Ctrl+K quick switcher, People: profiles, custom status and pausing
-   notifications, and Preferences.
+   notifications, Preferences, formatting and files.
 
    Usage: node scripts/check.mjs   (URL=… for another server) */
 
@@ -150,6 +150,39 @@ try {
   check('inline code and code blocks render as typed', shape.code === 'inline' && shape.pre === 'const x = *y*')
   check('links open in a new tab', shape.link === true)
   check('emoji names render as emoji', shape.emoji === true)
+
+  // Files: the attach button stores uploads for the next message; images show inline.
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+  await avery.setInputFiles('#attach', [
+    { name: 'diagram.png', mimeType: 'image/png', buffer: png },
+    { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Remember the milk') },
+  ])
+  check('chosen files wait in the composer', await until(avery, () => document.querySelectorAll('#composer-area [data-upload]').length === 2))
+  await avery.getByRole('button', { name: 'Remove notes.txt' }).click()
+  check('a waiting file can be removed', await until(avery, () => document.querySelectorAll('#composer-area [data-upload]').length === 1))
+  const caption = `Diagram${Date.now()}`
+  await avery.click('#composer')
+  await avery.keyboard.type(caption)
+  await avery.keyboard.press('Enter')
+  check('an image reaches Blake inline', await until(blake, caption => {
+    const item = [...document.querySelectorAll('#message-list li')].find(row => row.textContent.includes(caption))
+    const image = item?.querySelector('[data-attachment] img')
+    return image?.complete === true && image.naturalWidth === 1
+  }, caption))
+  check('the composer is empty after sending files', await until(avery, () => document.querySelectorAll('#composer-area [data-upload]').length === 0))
+  const fileUrl = await blake.evaluate(caption => [...document.querySelectorAll('#message-list li')].find(row => row.textContent.includes(caption))?.querySelector('[data-attachment] img')?.getAttribute('src'), caption)
+  const served = await blake.request.get(`${base}${fileUrl}`)
+  check('files are served with nosniff and no scripts', served.status() === 200 && served.headers()['x-content-type-options'] === 'nosniff' && served.headers()['content-security-policy']?.includes('sandbox') === true)
+  const outsider = await browser.newContext()
+  check('signed-out requests get no file', (await outsider.request.get(`${base}${fileUrl}`)).status() === 403)
+  await outsider.close()
+  await avery.setInputFiles('#attach', { name: 'page.html', mimeType: 'text/html', buffer: Buffer.from('<script>alert(1)</script>') })
+  check('any file can be attached', await until(avery, () => document.querySelectorAll('#composer-area [data-upload]').length === 1))
+  await avery.click('#send')
+  check('a file-only message reaches Blake as a download', await until(blake, () => [...document.querySelectorAll('#message-list [data-attachment][download]')].some(link => link.getAttribute('download') === 'page.html')))
+  const download = await blake.evaluate(() => [...document.querySelectorAll('#message-list [data-attachment][download]')].find(link => link.getAttribute('download') === 'page.html')?.getAttribute('href'))
+  const html = await blake.request.get(`${base}${download}`)
+  check('a non-image downloads as bytes, never as a page', html.headers()['content-type'] === 'application/octet-stream' && html.headers()['content-disposition']?.startsWith('attachment') === true)
 
   // Threads
   await visit(avery, '/client/ch_general')

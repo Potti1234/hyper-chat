@@ -377,6 +377,23 @@
     {
       "exports": [
         {
+          "contract": "component.file-input",
+          "file": "src/ui/file-button.ts",
+          "name": "fileButton"
+        }
+      ],
+      "files": [
+        {
+          "path": "src/ui/file-button.ts",
+          "rawRendering": true,
+          "role": "renderer"
+        }
+      ],
+      "id": "crease/file-input"
+    },
+    {
+      "exports": [
+        {
           "contract": "composition.form",
           "file": "src/ui/form.ts",
           "name": "form"
@@ -1109,7 +1126,10 @@
             "h2",
             "h3",
             "button",
-            "br"
+            "br",
+            "blockquote",
+            "s",
+            "img"
           ],
           "rawRendering": true,
           "role": "adapter"

@@ -16,7 +16,7 @@ import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { authorName, messageText } from '../view/message'
+import { attachmentList, authorName, messageText } from '../view/message'
 import { Nav, WORKSPACE_NAME, emptyNav, hasUnread, navOf, rail, sameNav, topBar } from '../view/shell'
 
 /* Slack's search results: the query in the top bar, results as you type in
@@ -183,6 +183,7 @@ const messageHit = (model: Model, hit: MessageHit, h: HtmlBuilder<Message>): Htm
               box({ as: 'span', class: 'text-[12px] text-muted-foreground', children: [`${dayLabel(hit.message.createdAt, model.now, model.me)} at ${formatTime(hit.message.createdAt, model.me)}`] }, h),
             ] }, h),
           box({ class: slack.messageText, attributes: [h.DataAttribute('message-text', '')], children: messageText(hit.message.text, model.members, h) }, h),
+          ...attachmentList(hit.message.files, h),
         ] }, h),
       buttonLink({ href: hrefOf(hit), variant: 'outline', size: 'sm', children: [hit.message.threadId === null ? 'View in channel' : 'View thread'] }, h),
     ] }, h)

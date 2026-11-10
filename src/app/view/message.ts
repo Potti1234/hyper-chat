@@ -1,6 +1,9 @@
 import type { Html, HtmlBuilder } from 'foldkit/html'
 
-import { type Member, handleOf } from '../domain'
+import * as Icon from '@/lib/icon'
+import { button } from '@/ui/button'
+
+import { type Attachment, type Member, handleOf, isImage } from '../domain'
 import { type Block, type Inline, parse } from '../mrkdwn'
 import { statusOf } from '../profile'
 import { box, slack } from './design'
@@ -67,3 +70,57 @@ export const authorName = <Msg>(author: Member | undefined, now: number, h: Html
       ...(status === undefined ? [] : [box({ as: 'span', class: 'text-[13px] leading-none', attributes: [h.Title(status.text), h.AriaLabel(`Status: ${status.text}`), h.DataAttribute('status-emoji', '')], children: [status.emoji] }, h)]),
     ] }, h)
 }
+
+/** A byte count as Slack shows it ("12 KB", "3.4 MB"). */
+export const formatSize = (bytes: number): string =>
+  bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
+
+const fileUrl = (file: Attachment) => `/files/${encodeURIComponent(file.id)}`
+
+const kindOf = (file: Attachment) => {
+  if (isImage(file)) return file.type.replace('image/', '').toUpperCase()
+  const extension = /\.([a-z0-9]{1,8})$/i.exec(file.name)?.[1]
+  return extension === undefined ? 'File' : extension.toUpperCase()
+}
+
+/** The files shared in a message: images as previews that open full size,
+ *  anything else as a card that downloads. */
+export const attachmentList = <Msg>(files: ReadonlyArray<Attachment> | undefined, h: HtmlBuilder<Msg>): ReadonlyArray<Html> =>
+  files === undefined || files.length === 0
+    ? []
+    : [box({ class: slack.attachments, attributes: [h.AriaLabel('Files'), h.DataAttribute('attachments', '')], children: files.map(file =>
+        isImage(file)
+          ? box({ as: 'a', class: slack.attachmentImage, attributes: [h.Href(fileUrl(file)), h.Target('_blank'), h.Rel('noopener noreferrer'), h.Title(file.name), h.DataAttribute('attachment', file.id)], children: [
+              box({ as: 'img', attributes: [h.Src(fileUrl(file)), h.Alt(file.name), h.Attribute('loading', 'lazy')] }, h),
+            ] }, h)
+          : box({ as: 'a', class: slack.attachmentFile, attributes: [h.Href(fileUrl(file)), h.Attribute('download', file.name), h.Title(`Download ${file.name}`), h.DataAttribute('attachment', file.id)], children: [
+              box({ as: 'span', class: 'flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground', children: [Icon.icon('file', { class: 'size-5' }, h)] }, h),
+              box({ class: 'min-w-0 flex-1', children: [
+                  box({ class: 'truncate text-[15px] font-bold', children: [file.name] }, h),
+                  box({ class: 'text-[13px] text-muted-foreground', children: [`${kindOf(file)} · ${formatSize(file.size)}`] }, h),
+                ] }, h),
+              Icon.icon('download', { class: 'size-4 text-muted-foreground' }, h),
+            ] }, h)) }, h)]
+
+/** The composer's files waiting to be sent, each removable, and how many are
+ *  still uploading. */
+export const uploadChips = <Msg>(
+  props: Readonly<{ uploads: ReadonlyArray<Attachment>; uploading: number; onRemove: (id: string) => Msg }>,
+  h: HtmlBuilder<Msg>,
+): ReadonlyArray<Html> =>
+  props.uploads.length === 0 && props.uploading === 0
+    ? []
+    : [box({ class: 'flex flex-wrap gap-2 px-3 pb-1', attributes: [h.AriaLabel('Files to send'), h.DataAttribute('uploads', '')], children: [
+        ...props.uploads.map(file =>
+          box({ class: slack.uploadChip, attributes: [h.DataAttribute('upload', file.id)], children: [
+              isImage(file)
+                ? box({ as: 'img', class: 'size-10 shrink-0 rounded-md object-cover', attributes: [h.Src(fileUrl(file)), h.Alt('')] }, h)
+                : box({ as: 'span', class: 'flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground', children: [Icon.icon('file', { class: 'size-5' }, h)] }, h),
+              box({ class: 'min-w-0 flex-1', children: [
+                  box({ class: 'min-w-0 truncate text-[13px] font-bold', children: [file.name] }, h),
+                  box({ class: 'text-[12px] text-muted-foreground', children: [`${kindOf(file)} · ${formatSize(file.size)}`] }, h),
+                ] }, h),
+              button({ variant: 'ghost', size: 'icon-xs', ariaLabel: `Remove ${file.name}`, title: 'Remove', onClick: props.onRemove(file.id), children: [Icon.icon('x', {}, h)] }, h),
+            ] }, h)),
+        ...(props.uploading === 0 ? [] : [box({ class: 'flex items-center gap-2 px-1 text-[13px] text-muted-foreground', attributes: [h.Role('status'), h.DataAttribute('uploading', '')], children: [`Uploading ${props.uploading} ${props.uploading === 1 ? 'file' : 'files'}…`] }, h)]),
+      ] }, h)]

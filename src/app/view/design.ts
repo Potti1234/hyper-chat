@@ -13,7 +13,7 @@ import type { Preferences } from '../domain'
 export type BoxElement =
   | 'div' | 'span' | 'p' | 'a' | 'ul' | 'ol' | 'li' | 'header' | 'footer' | 'main' | 'aside' | 'nav'
   | 'section' | 'article' | 'form' | 'label' | 'strong' | 'em' | 'code' | 'pre' | 'h1' | 'h2' | 'h3'
-  | 'button' | 'br' | 'blockquote' | 's'
+  | 'button' | 'br' | 'blockquote' | 's' | 'img'
 
 type Attributes<Msg> = ReadonlyArray<Attribute<Msg> | ChildAttribute>
 type Builder<Msg> = (attributes: Attributes<Msg>, children: ReadonlyArray<Html | string>) => Html
@@ -118,6 +118,10 @@ export const slack = {
   mdCodeBlock: 'md-pre',
   mdBullets: 'md-list md-bullets',
   mdNumbers: 'md-list md-numbers',
+  attachments: 'attachments',
+  attachmentImage: 'attachment-image',
+  attachmentFile: 'attachment-file',
+  uploadChip: 'upload-chip',
   dayDivider: 'day-divider',
   newDivider: 'new-divider',
   composer: 'composer',

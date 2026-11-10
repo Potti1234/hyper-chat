@@ -17,7 +17,7 @@ import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherCli
 import { formatBar } from '../view/composer'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
-import { authorName, messageText } from '../view/message'
+import { attachmentList, authorName, messageText } from '../view/message'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, sidebar, topBar, WORKSPACE_NAME } from '../view/shell'
 
 /* Slack's Threads view: every thread you are part of (you started it,
@@ -263,6 +263,7 @@ const messageView = (model: Model, message: ChatMessage, h: HtmlBuilder<Message>
               ...messageText(message.text, model.members, h),
               ...(message.editedAt === null ? [] : [box({ as: 'span', class: 'ml-1 text-[12px] text-muted-foreground', children: ['(edited)'] }, h)]),
             ] }, h),
+          ...attachmentList(message.files, h),
           ...(message.reactions.length === 0
             ? []
             : [box({ class: 'mt-1 flex flex-wrap items-center gap-1', attributes: [h.AriaLabel('Reactions')], children: message.reactions.map(reaction => {

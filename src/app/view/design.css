@@ -131,3 +131,10 @@
     opacity: 1;
   }
 }
+
+.attachments { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 2px; }
+.attachment-image { display: block; overflow: hidden; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 8px; }
+.attachment-image img { display: block; max-width: min(360px, 100%); max-height: 240px; object-fit: contain; }
+.attachment-file { display: flex; align-items: center; gap: 10px; width: min(360px, 100%); border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 8px; padding: 10px 12px; background: var(--background); }
+@media (hover: hover) { .attachment-file:hover { background: var(--muted); } }
+.upload-chip { display: flex; align-items: center; gap: 8px; width: 240px; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 8px; padding: 6px; background: var(--background); }

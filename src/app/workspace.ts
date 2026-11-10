@@ -1,7 +1,7 @@
 import { Data, Effect } from 'effect'
 
 import { activityOf } from './activity'
-import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, type Member, type Message, type Preferences, type Read, type Saved, type SavedState, canRead, channelSlug, inChannel, isMemberOf, preferencesOf } from './domain'
+import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_FILES, MAX_MESSAGE, MAX_TOPIC, type Attachment, type Member, type Message, type Preferences, type Read, type Saved, type SavedState, canRead, channelSlug, inChannel, isMemberOf, preferencesOf } from './domain'
 import { isSidebarSlug } from './preferences'
 import { STATUS_EMOJI, isEmoji } from './emoji'
 import { MAX_NAME, MAX_PRONOUNS, MAX_STATUS, MAX_TITLE, isTimeZone } from './profile'
@@ -277,14 +277,19 @@ const withRead = (reads: ReadonlyArray<Read>, read: Read): ReadonlyArray<Read> =
   return reads.map(candidate => (candidate === current ? read : candidate))
 }
 
-export const messageText = (text: string): Effect.Effect<string, InvalidChange> => {
+export const messageText = (text: string, isEmptyAllowed = false): Effect.Effect<string, InvalidChange> => {
   const body = text.trim()
-  if (body === '') return invalid('Write something first.')
+  if (body === '' && !isEmptyAllowed) return invalid('Write something first.')
   if (body.length > MAX_MESSAGE) return invalid(`Keep messages under ${MAX_MESSAGE} characters.`)
   return Effect.succeed(body)
 }
 
-export type PostOptions = Readonly<{ threadId?: string | null; alsoInChannel?: boolean }>
+export type PostOptions = Readonly<{
+  threadId?: string | null
+  alsoInChannel?: boolean
+  /** Files stored by the Files service (files.ts); a message may be only files. */
+  files?: ReadonlyArray<Attachment>
+}>
 
 /** Posts to a conversation, or as a reply in a thread of one of its messages. */
 export const postMessage =
@@ -294,14 +299,16 @@ export const postMessage =
       const channel = yield* findChannel(data, channelId)
       if (channel.isArchived) return yield* invalid('This channel is archived.')
       if (!isMemberOf(channel, actorId)) return yield* invalid(`Join #${channel.name} to write in it.`)
-      const body = yield* messageText(text)
+      const files = options.files ?? []
+      if (files.length > MAX_FILES) return yield* invalid(`Share at most ${MAX_FILES} files at once.`)
+      const body = yield* messageText(text, files.length > 0)
       const threadId = options.threadId ?? null
       if (threadId !== null) {
         const parent = data.messages.find(candidate => candidate.id === threadId)
         if (parent === undefined || parent.channelId !== channelId) return yield* invalid('That thread was deleted.')
         if (parent.threadId !== null) return yield* invalid('Reply to the thread itself.')
       }
-      const message: Message = { id: id('msg'), channelId, authorId: actorId, text: body, createdAt: at, editedAt: null, reactions: [], threadId, alsoInChannel: threadId !== null && options.alsoInChannel === true, isDemo: false }
+      const message: Message = { id: id('msg'), channelId, authorId: actorId, text: body, createdAt: at, editedAt: null, reactions: [], threadId, alsoInChannel: threadId !== null && options.alsoInChannel === true, ...(files.length === 0 ? {} : { files }), isDemo: false }
       return [message, { ...data, messages: [...data.messages, message], reads: withRead(data.reads, { memberId: actorId, channelId, at }) }] as const
     })
 
@@ -322,7 +329,7 @@ export const editMessage =
     Effect.gen(function* () {
       const message = yield* findMessage(data, messageId)
       if (message.authorId !== actorId) return yield* invalid('You can only edit your own messages.')
-      const body = yield* messageText(text)
+      const body = yield* messageText(text, (message.files?.length ?? 0) > 0)
       if (body === message.text) return [message, data] as const
       const edited: Message = { ...message, text: body, editedAt: at }
       return [edited, replaceMessage(data, message, edited)] as const

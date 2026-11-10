@@ -16,6 +16,7 @@ import * as PeoplePage from '@/app/people/page'
 import * as PreferencesPage from '@/app/preferences/page'
 import * as DmsPage from '@/app/dms/page'
 import * as ThreadsPage from '@/app/threads/page'
+import * as Files from '@/app/files'
 import * as Postgres from '@/app/postgres'
 
 /* The server: one hyper-effect layer per page, plain routes for sign-in and
@@ -56,6 +57,7 @@ const Routes = Layer.mergeAll(
   Hyper.layer(DmsPage.program, { ...page, path: '/dms' }),
   Hyper.layer(ClientPage.program, { ...page, path: '/client/:channel', paths: ['/', '/client/:channel/thread/:thread'], prefetch: ['/client/*'] }),
   Auth.routes,
+  Files.routes,
   HttpRouter.add('GET', '/favicon.ico', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),
   HttpRouter.add('GET', '/favicon.svg', HttpServerResponse.file(publicFile('favicon.svg'), { contentType: 'image/svg+xml' })),
   HttpRouter.add('GET', '/styles.css', HttpServerResponse.file(publicFile('styles.css'), { contentType: 'text/css' })),
@@ -66,7 +68,7 @@ const Routes = Layer.mergeAll(
 
 HttpRouter.serve(Routes).pipe(
   Layer.provide(Hyper.sqlStore()),
-  Layer.provideMerge(Postgres.layer),
+  Layer.provideMerge(Layer.merge(Postgres.layer, Files.postgresLayer)),
   Layer.provide(Postgres.clientLayer),
   Layer.provide(NodeServices.layer),
   Layer.provide(NodeHttpServer.layer(createServer, { port })),
