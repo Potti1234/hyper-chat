@@ -676,6 +676,21 @@ try {
   for (const id of ['#preset-default', '#sidebar-default', '#display-clean', '#clock-12']) await avery.locator(id).click()
   check('defaults come back', await rootNot(avery, 'theme-nord') && await rootNot(avery, 'sidebar-jade') && await rootNot(avery, 'density-compact'))
 
+  const titleOnTop = page => page.evaluate(() => {
+    const title = document.querySelector('#channel-title')?.getBoundingClientRect()
+    const topic = document.querySelector('#channel-topic')?.getBoundingClientRect()
+    if (title === undefined || title.width < 40) return false
+    const hit = document.elementFromPoint(title.left + title.width / 2, title.top + title.height / 2)
+    return hit?.closest('#channel-title') !== null && (topic === undefined || topic.left >= title.right - 1)
+  })
+  await avery.setViewportSize({ width: 640, height: 720 })
+  await visit(avery, '/client/ch_general')
+  check('in a narrow window the topic stays clear of the channel name', await titleOnTop(avery))
+  await avery.setViewportSize({ width: 1440, height: 900 })
+  await avery.locator('#message-list button[aria-label*="open thread"]').first().click()
+  await until(avery, () => document.querySelector('#thread-list') !== null)
+  check('with a thread open the topic stays clear of the channel name', await titleOnTop(avery))
+
   for (const { errors } of people) for (const error of errors) check('no browser errors', false, error)
 } finally {
   await browser.close()

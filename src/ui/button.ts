@@ -65,9 +65,10 @@ export const buttonVariants = cva(
         // Someone picked in the To field; clicking takes them out.
         'person-chip': 'h-7 gap-1.5 rounded-md bg-link/10 px-1.5 text-[14px] font-semibold text-link hover:bg-link/20',
         // The conversation header's channel name: opens its details.
-        'channel-title': 'min-w-0 gap-1 px-1.5 text-[18px] font-black hover:bg-muted',
-        // The header's topic: muted text that opens the topic editor.
-        topic: 'min-w-0 justify-start px-1 text-[13px] font-normal text-muted-foreground hover:text-foreground',
+        'channel-title': 'min-w-20 max-w-full shrink overflow-hidden gap-1 px-1.5 text-[18px] font-black hover:bg-muted',
+        // The header's topic: muted text that opens the topic editor. It gives
+        // up its width before the channel name does.
+        topic: 'min-w-0 shrink-[100] overflow-hidden justify-start px-1 text-[13px] font-normal text-muted-foreground hover:text-foreground',
         // A destructive action shown as text (Leave channel).
         'danger-text': 'justify-start text-destructive hover:bg-destructive/10',
         // A channel in the channel browser: name above members and description.

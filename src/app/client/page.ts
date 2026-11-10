@@ -1593,7 +1593,7 @@ const headerView = (model: Model, h: HtmlBuilder<Message>): Html => {
   const people = channel === null ? [] : channel.memberIds.map(id => model.members.find(member => member.id === id)).filter(member => member !== undefined)
   return box({ as: 'header', class: 'shrink-0 border-b', attributes: [h.Id('conversation-header')], children: [
       box({ class: 'flex min-h-[49px] items-center gap-2 px-4', children: [
-          box({ as: 'h1', class: 'flex min-w-0 items-center gap-1 text-[18px] font-black', children: channel === null
+          box({ as: 'h1', class: 'flex min-w-20 items-center gap-1 text-[18px] font-black', children: channel === null
               ? [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)]
               : channel.kind === 'dm'
               ? [button({ id: 'channel-title', variant: 'channel-title', size: 'sm', ariaLabel: `Conversation details for ${titleOf(model)}`, onClick: Message.ClickedOpenDetails({ tab: 'settings', field: null }), trailingIcon: Icon.icon('chevron-down', { class: 'size-4' }, h), children: [box({ as: 'span', class: 'min-w-0 truncate', children: [titleOf(model)] }, h)] }, h)]
@@ -1609,7 +1609,7 @@ const headerView = (model: Model, h: HtmlBuilder<Message>): Html => {
           ...(channel === null || channel.kind === 'dm'
             ? []
             : [button({ id: 'channel-members', variant: 'outline', size: 'sm', ariaLabel: `View all ${people.length} members`, title: `${people.length} members`, onClick: Message.ClickedOpenDetails({ tab: 'members', field: null }), children: [
-                box({ class: 'flex -space-x-1', children: people.slice(0, 3).map(member => avatar(member, h, 'sm', 'ring-2 ring-background')) }, h),
+                box({ class: 'flex -space-x-1 max-md:hidden', children: people.slice(0, 3).map(member => avatar(member, h, 'sm', 'ring-2 ring-background')) }, h),
                 box({ as: 'span', class: 'px-0.5 text-[13px] font-semibold text-muted-foreground', children: [String(people.length)] }, h),
               ] }, h)]),
         ] }, h),
