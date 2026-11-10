@@ -633,7 +633,8 @@ const withoutGone = (model: Model): Model => {
 const escape = (model: Model): UpdateReturn => {
   if (model.overlay !== null) return { model: { ...model, overlay: null } }
   if (model.editing !== null) return { model: withFocus({ ...model, editing: null }, composerOf(model.editing.where)) }
-  return { model }
+  // Slack: Esc marks the conversation read, the "New" line included.
+  return markRead({ model: { ...model, readMarker: Number.MAX_SAFE_INTEGER, markedUpTo: model.markedUpTo === Number.MAX_SAFE_INTEGER ? 0 : model.markedUpTo } })
 }
 
 export const updateModel = (model: Model, message: Message): UpdateReturn =>
@@ -649,7 +650,7 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
       SubmittedDraft: () => send(model),
       PressedEnter: ({ targetId }) =>
         targetId === 'detail-field' ? saveField(model) : targetId === 'composer' ? send(model) : targetId === 'thread-composer' ? sendReply(model) : targetId === 'edit-composer' ? saveEdit(model) : { model },
-      PressedEscape: () => (model.switcher.dialog.isOpen ? { model } : escape(model)),
+      PressedEscape: () => (model.switcher.dialog.isOpen || model.switcher.shortcuts.isOpen ? { model } : escape(model)),
       // Up in an empty composer edits your last message (Slack).
       PressedUp: ({ targetId }) => {
         if (model.editing !== null) return { model }

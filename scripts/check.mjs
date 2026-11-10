@@ -496,6 +496,28 @@ try {
   await avery.waitForURL(/\/client\/dm_/, { timeout: 5000 }).catch(() => {})
   check('a click opens the DM', /\/client\/dm_/.test(avery.url()))
 
+  // Keyboard shortcuts
+  await visit(avery, '/client/ch_general')
+  const order = await avery.$$eval('#sidebar a[href^="/client/"]', links => links.map(link => new URL(link.href).pathname))
+  const at = order.indexOf('/client/ch_general')
+  await live(avery, () => avery.keyboard.press('Alt+ArrowDown'))
+  check('Alt+↓ opens the next conversation', new URL(avery.url()).pathname === order[(at + 1) % order.length], new URL(avery.url()).pathname)
+  await live(avery, () => avery.keyboard.press('Alt+ArrowUp'))
+  check('Alt+↑ goes back', new URL(avery.url()).pathname === '/client/ch_general')
+  await avery.keyboard.press('Control+/')
+  check('Ctrl+/ lists the shortcuts', await until(avery, () => document.querySelector('dialog#shortcuts')?.open === true && document.querySelector('#shortcuts [data-shortcut-group=Navigation]') !== null))
+  await avery.keyboard.press('Escape')
+  check('Escape closes the list', await until(avery, () => document.querySelector('dialog#shortcuts')?.open === false))
+  const unreadAgain = avery.locator('#message-list li[data-author=mem_blake]').last()
+  await unreadAgain.hover()
+  await unreadAgain.getByRole('button', { name: 'More actions' }).click()
+  await avery.click('#menu-unread')
+  await until(avery, () => document.querySelector('#new-divider') !== null)
+  await avery.keyboard.press('Escape')
+  check('Esc marks the conversation read', await until(avery, () => document.querySelector('#new-divider') === null))
+  await visit(avery, '/client/ch_random')
+  check('and it is not bold afterwards', await until(avery, () => [...document.querySelectorAll('#sidebar a')].some(link => link.textContent.includes('general') && getComputedStyle(link).fontWeight < 700)))
+
   // People, profiles, custom status and pausing notifications
   await visit(avery, '/client/ch_general')
   await live(avery, () => avery.click('#my-profile'))

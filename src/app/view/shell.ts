@@ -203,6 +203,23 @@ const section = <Msg>(
 /** Starred channels, then starred DMs, each in its section's order. */
 const starredOf = (nav: Nav): ReadonlyArray<NavRow> => [...nav.channels, ...nav.dms].filter(row => row.isStarred)
 
+/** The conversations in the order the sidebar lists them. */
+export const sidebarOrder = (nav: Nav): ReadonlyArray<NavRow> => [...starredOf(nav), ...nav.channels.filter(row => !row.isStarred), ...nav.dms.filter(row => !row.isStarred)]
+
+/** Alt+↑/↓ (Alt+Shift for unread ones only): the conversation `by` rows from
+ *  `fromId` in sidebar order, wrapping; from outside a conversation, the
+ *  first or last. */
+export const steppedTo = (nav: Nav, fromId: string | undefined, by: 1 | -1, isUnreadOnly: boolean): NavRow | undefined => {
+  const rows = sidebarOrder(nav)
+  const from = rows.findIndex(row => row.id === fromId)
+  const start = from === -1 ? (by === 1 ? -1 : rows.length) : from
+  for (let step = 1; step <= rows.length; step += 1) {
+    const row = rows[(((start + by * step) % rows.length) + rows.length) % rows.length]
+    if (row !== undefined && row.id !== fromId && (!isUnreadOnly || (row.isUnread && !row.isMuted) || row.mentions > 0)) return row
+  }
+  return undefined
+}
+
 export const sidebar = <Msg>(props: SidebarProps<Msg>, h: HtmlBuilder<Msg>): Html =>
   box({ as: 'aside', class: slack.sidebar, attributes: [h.Id('sidebar'), h.AriaLabel('Conversations')], children: [
       box({ as: 'header', class: 'flex h-12 shrink-0 items-center gap-1 px-3', children: [

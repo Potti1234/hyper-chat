@@ -97,7 +97,7 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Activity | Mentions, reactions to your messages, thread replies | **done** (filters: all, mentions, threads, reactions; unreads only) |
 | Search | Messages, channels, people; modifiers `in:#x`, `from:@y`, `has:link`, before/after | **done** (top bar field, `/search` with Messages / Channels / People, `in:` and `from:` with chips, live results; no `has:` or dates yet) |
 | Quick switcher | Ctrl/Cmd+K: jump to a channel or person | **done** (on every page: your channels and DMs, people, and a "Search for …" row; arrows + Enter) |
-| Keyboard shortcuts | Alt+↑/↓ previous/next channel, Esc marks read, ↑ edits your last message, Ctrl+/ shortcut list | **planned** |
+| Keyboard shortcuts | Alt+↑/↓ previous/next channel, Esc marks read, ↑ edits your last message, Ctrl+/ shortcut list | **done**: on every page Alt+↑/↓ open the previous/next conversation in sidebar order (Alt+Shift+↑/↓ unread ones only) and Ctrl/Cmd+/ lists the shortcuts; in a conversation Esc marks it read and ↑ in an empty composer edits your last message |
 | History ← → | Browser-like back/forward | Browser back/forward (each view is a URL) — **done** by design |
 
 ## 6. Preferences

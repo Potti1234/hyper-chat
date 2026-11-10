@@ -12,17 +12,21 @@ import { kbd, kbdGroup } from '@/ui/kbd'
 import { type Member, handleOf } from '../domain'
 import { box, optionRow } from './design'
 import { avatar } from './icons'
-import type { Nav } from './shell'
+import { type Nav, steppedTo } from './shell'
 
 /* Slack's quick switcher (Ctrl/Cmd+K) on every page: a dialog with a field
    that jumps to a channel, a direct message or a person; the last row
    searches for what you typed. Arrows move, Enter opens. Each page keeps a
-   `switcher` in its Model and forwards a `GotSwitcher` Message here. */
+   `switcher` in its Model and forwards a `GotSwitcher` Message here.
 
-export const Switcher = S.Struct({ dialog: Dialog.Model, query: S.String, active: S.Number })
+   The other keys every page shares live here too: Alt+↑/↓ (with Shift,
+   unread only) open the previous or next conversation in the sidebar, and
+   Ctrl/Cmd+/ opens the list of keyboard shortcuts. */
+
+export const Switcher = S.Struct({ dialog: Dialog.Model, query: S.String, active: S.Number, shortcuts: Dialog.Model })
 export type Switcher = typeof Switcher.Type
 
-export const initSwitcher = (): Switcher => ({ dialog: Dialog.init({ id: 'switcher' }), query: '', active: 0 })
+export const initSwitcher = (): Switcher => ({ dialog: Dialog.init({ id: 'switcher' }), query: '', active: 0, shortcuts: Dialog.init({ id: 'shortcuts' }) })
 
 export const MAX_SWITCHER_QUERY = 100
 /** The most rows the switcher lists before its search row. */
@@ -35,6 +39,9 @@ export const SwitcherEvent = S.Union([
   S.TaggedStruct('PressedEnter', { targetId: S.String }),
   S.TaggedStruct('ClickedItem', { index: S.Number }),
   S.TaggedStruct('GotDialog', { message: Dialog.Message }),
+  S.TaggedStruct('Stepped', { by: S.Literals([1, -1]), isUnreadOnly: S.Boolean }),
+  S.TaggedStruct('ToggledShortcuts', {}),
+  S.TaggedStruct('GotShortcuts', { message: Dialog.Message }),
   S.TaggedStruct('Completed', {}),
 ])
 export type SwitcherEvent = typeof SwitcherEvent.Type
@@ -44,6 +51,8 @@ export const SwitcherClientEvent = S.Union([
   S.TaggedStruct('ChangedQuery', { text: S.String }),
   S.TaggedStruct('ClickedItem', { index: S.Number }),
   S.TaggedStruct('GotDialog', { message: Dialog.Message.RequestedClose }),
+  S.TaggedStruct('ToggledShortcuts', {}),
+  S.TaggedStruct('GotShortcuts', { message: Dialog.Message.RequestedClose }),
 ])
 
 const Completed = (): SwitcherEvent => ({ _tag: 'Completed' })
@@ -112,7 +121,20 @@ const go = (switcher: Switcher, item: SwitcherItem | undefined): SwitcherReturn 
   return { switcher: closed.switcher, commands: [...closed.commands, Command.mapMessage(SwitchTo({ url: item.href }), Completed)] }
 }
 
-export const updateSwitcher = (switcher: Switcher, event: SwitcherEvent, items: (query: string) => ReadonlyArray<SwitcherItem>): SwitcherReturn =>
+const toUrl = (switcher: Switcher, url: string | undefined): SwitcherReturn =>
+  url === undefined ? { switcher, commands: [] } : { switcher, commands: [Command.mapMessage(SwitchTo({ url }), Completed)] }
+
+const withShortcuts = (switcher: Switcher, result: ReturnType<typeof Dialog.update>): SwitcherReturn => ({
+  switcher: { ...switcher, shortcuts: result.model },
+  commands: Command.mapMessages(result.commands, message => ({ _tag: 'GotShortcuts' as const, message })),
+})
+
+export const updateSwitcher = (
+  switcher: Switcher,
+  event: SwitcherEvent,
+  items: (query: string) => ReadonlyArray<SwitcherItem>,
+  step: (by: 1 | -1, isUnreadOnly: boolean) => string | undefined = () => undefined,
+): SwitcherReturn =>
   M.value(event).pipe(
     M.withReturnType<SwitcherReturn>(),
     M.tagsExhaustive({
@@ -125,6 +147,9 @@ export const updateSwitcher = (switcher: Switcher, event: SwitcherEvent, items: 
       PressedEnter: ({ targetId }) => (switcher.dialog.isOpen && targetId === 'switcher-input' ? go(switcher, items(switcher.query)[switcher.active]) : { switcher, commands: [] }),
       ClickedItem: ({ index }) => (switcher.dialog.isOpen ? go(switcher, items(switcher.query)[index]) : { switcher, commands: [] }),
       GotDialog: ({ message }) => withDialog(switcher, Dialog.update(switcher.dialog, message)),
+      Stepped: ({ by, isUnreadOnly }) => (switcher.dialog.isOpen || switcher.shortcuts.isOpen ? { switcher, commands: [] } : toUrl(switcher, step(by, isUnreadOnly))),
+      ToggledShortcuts: () => (switcher.dialog.isOpen ? { switcher, commands: [] } : withShortcuts(switcher, switcher.shortcuts.isOpen ? Dialog.close(switcher.shortcuts) : Dialog.open(switcher.shortcuts))),
+      GotShortcuts: ({ message }) => withShortcuts(switcher, Dialog.update(switcher.shortcuts, message)),
       Completed: () => ({ switcher, commands: [] }),
     }),
   )
@@ -150,6 +175,11 @@ export const switcherKeys = <Msg>(props: SwitcherViewProps<Msg>, h: HtmlBuilder<
     h,
     [
       { keys: 'Mod+K', whileTyping: 'Allow', message: () => props.toMessage({ _tag: 'Toggled' }) },
+      { keys: 'Mod+/', whileTyping: 'Allow', message: () => props.toMessage({ _tag: 'ToggledShortcuts' }) },
+      { keys: 'Alt+ArrowUp', whileTyping: 'Allow', message: () => props.toMessage({ _tag: 'Stepped', by: -1, isUnreadOnly: false }) },
+      { keys: 'Alt+ArrowDown', whileTyping: 'Allow', message: () => props.toMessage({ _tag: 'Stepped', by: 1, isUnreadOnly: false }) },
+      { keys: 'Alt+Shift+ArrowUp', whileTyping: 'Allow', message: () => props.toMessage({ _tag: 'Stepped', by: -1, isUnreadOnly: true }) },
+      { keys: 'Alt+Shift+ArrowDown', whileTyping: 'Allow', message: () => props.toMessage({ _tag: 'Stepped', by: 1, isUnreadOnly: true }) },
       { keys: 'ArrowDown', whileTyping: 'Allow', isEnabled: props.switcher.dialog.isOpen, message: () => props.toMessage({ _tag: 'Moved', by: 1 }) },
       { keys: 'ArrowUp', whileTyping: 'Allow', isEnabled: props.switcher.dialog.isOpen, message: () => props.toMessage({ _tag: 'Moved', by: -1 }) },
       { keys: 'Enter', whileTyping: 'Allow', isEnabled: props.switcher.dialog.isOpen, message: ({ targetId }) => props.toMessage({ _tag: 'PressedEnter', targetId }) },
@@ -185,13 +215,61 @@ export const switcherDialog = <Msg>(props: SwitcherViewProps<Msg>, h: HtmlBuilde
     h,
   )
 
+/** Slack's shortcuts that work here, for the Ctrl/Cmd+/ list. */
+export const SHORTCUTS: ReadonlyArray<Readonly<{ group: string; label: string; keys: ReadonlyArray<string> }>> = [
+  { group: 'Navigation', label: 'Jump to a conversation', keys: ['Ctrl', 'K'] },
+  { group: 'Navigation', label: 'Previous / next conversation', keys: ['Alt', 'Up', 'Down'] },
+  { group: 'Navigation', label: 'Previous / next unread conversation', keys: ['Alt', 'Shift', 'Up', 'Down'] },
+  { group: 'Navigation', label: 'Show keyboard shortcuts', keys: ['Ctrl', '/'] },
+  { group: 'Messages', label: 'Send the message', keys: ['Enter'] },
+  { group: 'Messages', label: 'New line', keys: ['Shift', 'Enter'] },
+  { group: 'Messages', label: 'Edit your last message', keys: ['Up'] },
+  { group: 'Messages', label: 'Mark the conversation read', keys: ['Esc'] },
+  { group: 'Formatting', label: 'Bold / italic', keys: ['Ctrl', 'B', 'I'] },
+  { group: 'Formatting', label: 'Strikethrough', keys: ['Ctrl', 'Shift', 'X'] },
+  { group: 'Formatting', label: 'Link', keys: ['Ctrl', 'Shift', 'U'] },
+  { group: 'Formatting', label: 'Code / code block', keys: ['Ctrl', 'Shift', 'C'] },
+  { group: 'Formatting', label: 'Numbered / bulleted list, quote', keys: ['Ctrl', 'Shift', '7', '8', '9'] },
+]
+
+export const shortcutsDialog = <Msg>(switcher: Switcher, toMessage: (event: SwitcherEvent) => Msg, h: HtmlBuilder<Msg>): Html =>
+  Dialog.dialog(
+    {
+      model: switcher.shortcuts,
+      toParentMessage: message => toMessage({ _tag: 'GotShortcuts', message }),
+      title: 'Keyboard shortcuts',
+      description: 'On a Mac, use ⌘ for Ctrl and ⌥ for Alt.',
+      content: () =>
+        [...new Set(SHORTCUTS.map(shortcut => shortcut.group))].map(group =>
+          box({ class: 'flex flex-col gap-1', attributes: [h.DataAttribute('shortcut-group', group)], children: [
+              box({ as: 'h3', class: 'text-[13px] font-bold', children: [group] }, h),
+              ...SHORTCUTS.filter(shortcut => shortcut.group === group).map(shortcut =>
+                box({ class: 'flex items-center justify-between gap-3 py-0.5 text-[13px]', children: [
+                    box({ as: 'span', class: 'min-w-0 flex-1 text-muted-foreground', children: [shortcut.label] }, h),
+                    kbdGroup({ children: shortcut.keys.map(key => kbd({ children: [key === 'Up' ? Icon.arrowUp({}, h) : key === 'Down' ? Icon.arrowDown({}, h) : key] }, h)) }, h),
+                  ] }, h),
+              ),
+            ] }, h),
+        ),
+    },
+    h,
+  )
+
 // PAGES
 
-type Host = Readonly<{ switcher: Switcher; nav: Nav; members: ReadonlyArray<Member>; me: Member }>
+type Host = Readonly<{ switcher: Switcher; nav: Nav; members: ReadonlyArray<Member>; me: Member; channelId?: string }>
 
 /** A page's `GotSwitcher` case. */
 export const updateHost = <Model extends Host, Msg>(model: Model, event: SwitcherEvent, toMessage: (event: SwitcherEvent) => Msg): Readonly<{ model: Model; commands: ReadonlyArray<Command.Command<Msg>> }> => {
-  const result = updateSwitcher(model.switcher, event, query => switcherItems(query, model.nav, model.members, model.me))
+  const result = updateSwitcher(
+    model.switcher,
+    event,
+    query => switcherItems(query, model.nav, model.members, model.me),
+    (by, isUnreadOnly) => {
+      const row = steppedTo(model.nav, model.channelId, by, isUnreadOnly)
+      return row === undefined ? undefined : `/client/${row.id}`
+    },
+  )
   return { model: { ...model, switcher: result.switcher }, commands: Command.mapMessages(result.commands, toMessage) }
 }
 
@@ -202,6 +280,6 @@ export const switcherRegion = <Msg>(model: Host, toMessage: (event: SwitcherEven
     deps: [model.switcher, model.nav, model.members, model.me],
     render: () => {
       const props = { switcher: model.switcher, items: switcherItems(model.switcher.query, model.nav, model.members, model.me), toMessage }
-      return box({ attributes: [h.Id('switcher-host')], children: [switcherKeys(props, h), switcherDialog(props, h)] }, h)
+      return box({ attributes: [h.Id('switcher-host')], children: [switcherKeys(props, h), switcherDialog(props, h), shortcutsDialog(model.switcher, toMessage, h)] }, h)
     },
   })
