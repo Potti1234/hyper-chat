@@ -7,6 +7,7 @@ import { defineMessageUnion } from 'foldkit/message'
 import { PageNotFound, PageRedirect, type PageRequest, type Program, keyBindings, region } from '@hyper-effect/core'
 
 import * as Icon from '@/lib/icon'
+import { text } from '@/ui/text'
 import { anchoredStyle } from '@/lib/anchored'
 import { button } from '@/ui/button'
 import { checkbox } from '@/ui/checkbox'
@@ -17,13 +18,14 @@ import { textarea } from '@/ui/textarea'
 
 import { requireMember } from '../auth'
 import { Files, MAX_FILE_BYTES } from '../files'
-import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, isMuted, isStarred, preferencesOf, readAt } from '../domain'
+import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, isMuted, isStarred, NotifyLevel, notifyLevel, preferencesOf, readAt } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { sameIds } from '../presence'
 import { typingIn } from '../typing'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { formatBar } from '../view/composer'
+import { choice } from '../view/choice'
 import { box, optionRow, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
 import { attachmentList, authorName, messageText, uploadChips } from '../view/message'
@@ -173,6 +175,7 @@ export const Message = defineMessageUnion({
   ClickedArchive: { isArchived: S.Boolean },
   ClickedMute: { isMuted: S.Boolean },
   ClickedStar: { isStarred: S.Boolean },
+  ClickedNotify: { level: NotifyLevel },
   SucceededJoin: {},
   SucceededField: {},
   LeftChannel: {},
@@ -219,6 +222,7 @@ export const ClientMessage = S.Union([
   Message.ClickedArchive,
   Message.ClickedMute,
   Message.ClickedStar,
+  Message.ClickedNotify,
   S.TaggedStruct('GotDetailsDialog', { message: Dialog.Message.RequestedClose }),
   // The dialog's own bindings; its Command results never come from the page.
   S.TaggedStruct('GotConfirmDialog', { message: Dialog.Message.RequestedClose }),
@@ -394,6 +398,16 @@ export const SetMuted = Command.define('SetMuted', {
   messages: [Message.CompletedChange, Message.FailedChange],
   execute: ({ channelId, isMuted, memberId }) =>
     Workspace.use(workspace => workspace.setMuted(memberId, channelId, isMuted)).pipe(
+      Effect.as(Message.CompletedChange()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const SetNotify = Command.define('SetNotify', {
+  args: { channelId: S.String, level: NotifyLevel, memberId: S.String },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ channelId, level, memberId }) =>
+    Workspace.use(workspace => workspace.setNotify(memberId, channelId, level)).pipe(
       Effect.as(Message.CompletedChange()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
@@ -765,6 +779,11 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
         const channel = model.channel
         if (channel === null || !isMemberOf(channel, model.me.id) || isMuted(model.me, channel.id) === mute) return { model }
         return { model, commands: [SetMuted({ channelId: channel.id, isMuted: mute, memberId: model.me.id })] }
+      },
+      ClickedNotify: ({ level }) => {
+        const channel = model.channel
+        if (channel === null || !isMemberOf(channel, model.me.id) || notifyLevel(model.me, channel) === level) return { model }
+        return { model, commands: [SetNotify({ channelId: channel.id, level, memberId: model.me.id })] }
       },
       ClickedStar: ({ isStarred: star }) => {
         const channel = model.channel
@@ -1147,6 +1166,21 @@ const pinsTab = (model: Model, h: HtmlBuilder<Message>): Html =>
             ] }, h)
         }) }, h)
 
+const NOTIFY_CHOICES: ReadonlyArray<Readonly<{ level: NotifyLevel; label: string; description: string; icon: Icon.IconName }>> = [
+  { level: 'all', label: 'All new messages', description: 'Every unread message counts on the badge', icon: 'bell' },
+  { level: 'mentions', label: 'Mentions', description: 'Only @mentions of you, @here and @channel', icon: 'at-sign' },
+  { level: 'nothing', label: 'Nothing', description: 'No badge and nothing in Activity', icon: 'bell-off' },
+]
+
+const notifySettings = (model: Model, channel: Channel, h: HtmlBuilder<Message>): Html => {
+  const level = notifyLevel(model.me, channel)
+  return box({ as: 'section', class: 'grid gap-2', attributes: [h.Id('notify-settings'), h.AriaLabel('Notifications')], children: [
+      text({ children: ['Notify me about'], type: 'body', weight: 'semibold' }, h),
+      box({ class: 'grid grid-cols-1 gap-2', attributes: [h.Role('group'), h.AriaLabel('Notify me about')], children: NOTIFY_CHOICES.map(option =>
+          choice({ id: `notify-${option.level}`, isActive: option.level === level, onPick: Message.ClickedNotify({ level: option.level }), label: option.label, description: option.description, media: [Icon.icon(option.icon, {}, h)] }, h)) }, h),
+    ] }, h)
+}
+
 const detailsDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
   const channel = model.channel
   if (channel === null) return box({}, h)
@@ -1160,15 +1194,18 @@ const detailsDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
     title: channel.kind === 'dm' ? titleOf(model) : `${channel.kind === 'private' ? '' : '#'}${channel.name}`,
     content: slots => [
       box({ class: 'flex flex-col gap-4', attributes: [h.Id('details-body')], children: [
-          box({ class: 'flex items-center gap-1', attributes: [h.AriaLabel('Details tabs')], children: channel.kind === 'dm' ? [tab('pins', `Pins ${model.pins.length}`)] : [tab('about', 'About'), tab('members', `Members ${channel.memberIds.length}`), ...(model.pins.length === 0 ? [] : [tab('pins', `Pins ${model.pins.length}`)]), ...(isMember ? [tab('settings', 'Settings')] : [])] }, h),
-          model.about.tab === 'pins' || channel.kind === 'dm'
+          box({ class: 'flex items-center gap-1', attributes: [h.AriaLabel('Details tabs')], children: channel.kind === 'dm' ? [tab('pins', `Pins ${model.pins.length}`), tab('settings', 'Settings')] : [tab('about', 'About'), tab('members', `Members ${channel.memberIds.length}`), ...(model.pins.length === 0 ? [] : [tab('pins', `Pins ${model.pins.length}`)]), ...(isMember ? [tab('settings', 'Settings')] : [])] }, h),
+          model.about.tab === 'settings' && isMember
+            ? box({ class: 'flex flex-col gap-4', children: [
+                notifySettings(model, channel, h),
+                ...(channel.kind === 'dm' ? [] : channel.name === DEFAULT_CHANNEL
+                  ? [box({ as: 'p', class: 'text-[14px] text-muted-foreground', children: [`#${DEFAULT_CHANNEL} includes everyone and cannot be archived.`] }, h)]
+                  : [button({ id: 'archive-channel', variant: 'danger-text', onClick: Message.ClickedArchive({ isArchived: !channel.isArchived }), leadingIcon: Icon.icon('archive', {}, h), children: [channel.isArchived ? 'Unarchive channel' : 'Archive channel for everyone'] }, h)]),
+              ] }, h)
+            : model.about.tab === 'pins' || channel.kind === 'dm'
             ? pinsTab(model, h)
             : model.about.tab === 'members'
-            ? membersTab(model, channel, h)
-            : model.about.tab === 'settings' && isMember
-              ? box({ class: 'flex flex-col gap-2', children: channel.name === DEFAULT_CHANNEL
-                  ? [box({ as: 'p', class: 'text-[14px] text-muted-foreground', children: [`#${DEFAULT_CHANNEL} includes everyone and cannot be archived.`] }, h)]
-                  : [button({ id: 'archive-channel', variant: 'danger-text', onClick: Message.ClickedArchive({ isArchived: !channel.isArchived }), leadingIcon: Icon.icon('archive', {}, h), children: [channel.isArchived ? 'Unarchive channel' : 'Archive channel for everyone'] }, h)] }, h)
+              ? membersTab(model, channel, h)
               : box({ class: 'flex flex-col gap-3', children: [
                   box({ class: 'rounded-lg border', children: [aboutField(model, channel, 'name', slots, h), aboutField(model, channel, 'topic', slots, h), aboutField(model, channel, 'description', slots, h),
                       box({ class: 'px-4 py-3', children: [box({ as: 'p', class: 'text-[14px] font-bold', children: ['Created by'] }, h), box({ as: 'p', class: 'text-[14px]', children: [`${creator?.name ?? 'Someone'} on ${dayLabel(channel.createdAt, model.now, model.me)}`] }, h)] }, h)] }, h),

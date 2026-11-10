@@ -108,7 +108,7 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Message display | Clean or compact | Clean (pictures, roomy rows) or compact (no pictures, tighter rows) — **done** |
 | Clock | 12- or 24-hour times | 12- or 24-hour, in your own time zone — **done** |
 | Sidebar options | Show/hide sections, sort | **out of scope** |
-| Notification preferences | All / mentions / nothing, per channel | Per channel: all / mentions / nothing (affects badges) — **planned** |
+| Notification preferences | All / mentions / nothing, per channel | **done**: "Notify me about" in a conversation's details Settings: All new messages (every unread message on the badge; the DM default), Mentions (the channel default) or Nothing (no badge, no mentions in Activity) |
 | Language and region | — | **out of scope** |
 
 ## 7. Implementation order

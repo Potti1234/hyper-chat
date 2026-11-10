@@ -23,6 +23,9 @@ export type Preferences = typeof Preferences.Type
 
 export const DEFAULT_PREFERENCES: Preferences = { sidebar: '', isCompact: false, is24Hour: false }
 
+export const NotifyLevel = S.Literals(['all', 'mentions', 'nothing'])
+export type NotifyLevel = typeof NotifyLevel.Type
+
 export const Member = S.Struct({
   id: S.String,
   name: S.String,
@@ -49,8 +52,15 @@ export const Member = S.Struct({
   muted: S.optionalKey(S.Array(S.String)),
   /** Conversations they starred: the Starred section at the top of the sidebar. */
   starred: S.optionalKey(S.Array(S.String)),
+  /** Per-conversation notification levels that differ from the default. */
+  notify: S.optionalKey(S.Record(S.String, NotifyLevel)),
 })
 export type Member = typeof Member.Type
+
+/** What counts towards a conversation's sidebar badge and your Activity
+ *  (Slack's "Notify me about"): channels default to mentions, DMs to all. */
+export const defaultNotify = (kind: ChannelKind): NotifyLevel => (kind === 'dm' ? 'all' : 'mentions')
+export const notifyLevel = (member: Member, channel: Readonly<{ id: string; kind: ChannelKind }>): NotifyLevel => member.notify?.[channel.id] ?? defaultNotify(channel.kind)
 
 export const isMuted = (member: Member, channelId: string): boolean => member.muted?.includes(channelId) === true
 export const isStarred = (member: Member, channelId: string): boolean => member.starred?.includes(channelId) === true

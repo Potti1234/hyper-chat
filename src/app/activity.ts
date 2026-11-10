@@ -1,6 +1,6 @@
 import { Schema as S } from 'effect'
 
-import { type Channel, ChannelKind, type Member, type Message, Message as ChatMessage, canRead, isMemberOf, mentions } from './domain'
+import { type Channel, ChannelKind, type Member, type Message, Message as ChatMessage, canRead, isMemberOf, mentions, notifyLevel } from './domain'
 
 /* Slack's Activity: what happened to you, newest first. Mentions of you
    (or @here / @channel) in channels you are in, replies in threads you
@@ -49,7 +49,7 @@ export const activityOf = (data: Data, me: Member): ReadonlyArray<ActivityItem> 
     if (channel === undefined) return
     const base = { channelId: channel.id, channelName: channel.name, channelKind: channel.kind, message }
     if (message.authorId !== me.id) {
-      if (mentions(message.text, me)) items.push({ ...base, id: `mention:${message.id}`, kind: 'mention', actorIds: [message.authorId], emoji: '', at: message.createdAt })
+      if (mentions(message.text, me) && notifyLevel(me, channel) !== 'nothing') items.push({ ...base, id: `mention:${message.id}`, kind: 'mention', actorIds: [message.authorId], emoji: '', at: message.createdAt })
       else if (message.threadId !== null && mine.has(message.threadId)) items.push({ ...base, id: `reply:${message.id}`, kind: 'reply', actorIds: [message.authorId], emoji: '', at: message.createdAt })
       return
     }

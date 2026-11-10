@@ -7,12 +7,12 @@ import { type PageRequest, type Program, region } from '@hyper-effect/core'
 
 import * as Icon from '@/lib/icon'
 import { text } from '@/ui/text'
-import { toggle } from '@/ui/toggle'
 
 import { requireMember } from '../auth'
 import { Member, type Preferences, formatTime, preferencesOf } from '../domain'
 import { SIDEBAR_THEMES, type SidebarTheme, isSidebarSlug } from '../preferences'
 import { Workspace, type WorkspaceState, presenceWhile } from '../store'
+import { choice } from '../view/choice'
 import { box, pageRoot, slack, swatch } from '../view/design'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
@@ -178,25 +178,6 @@ const SLACK_THEME: ThemePreset = {
   swatches: ['oklch(0.5 0.11 165)', 'oklch(0.955 0.004 330)', 'oklch(0.972 0.002 330)', 'oklch(1 0 0)'],
 }
 
-const choice = (
-  props: Readonly<{ id: string; isActive: boolean; onPick: Message; label: string; description?: string; media: ReadonlyArray<Html> }>,
-  h: HtmlBuilder<Message>,
-): Html =>
-  toggle({
-    id: props.id,
-    isPressed: props.isActive,
-    onToggle: props.onPick,
-    variant: 'outline',
-    size: 'card',
-    ariaLabel: props.label,
-    children: [
-      box({ class: 'flex shrink-0 items-center gap-1', children: props.media }, h),
-      box({ class: 'min-w-0', children: [
-          text({ children: [props.label], type: 'body', weight: 'medium', display: 'block' }, h),
-          ...(props.description === undefined ? [] : [text({ children: [props.description], type: 'supporting', color: 'secondary', display: 'block' }, h)]),
-        ] }, h),
-    ],
-  }, h)
 
 const group = (id: string, title: string, hint: string, columns: string, choices: ReadonlyArray<Html>, h: HtmlBuilder<Message>): Html =>
   box({ as: 'section', class: 'grid gap-2', attributes: [h.Id(id), h.AriaLabel(title)], children: [

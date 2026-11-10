@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { Clock, Context, Effect, Layer, type Scope, Semaphore, Stream, SubscriptionRef } from 'effect'
 
-import type { Channel, Member, Message, Preferences, Read, Saved, SavedState } from './domain'
+import type { Channel, Member, Message, NotifyLevel, Preferences, Read, Saved, SavedState } from './domain'
 import { hashPassword, verifyPassword } from './password'
 import { type Presence, memoryPresence, sameIds } from './presence'
 import { type Typing, type Typist, memoryTyping } from './typing'
@@ -42,6 +42,7 @@ import {
   setPaused,
   setMuted,
   setStarred,
+  setNotify,
   setStatus,
   updateProfile,
 } from './workspace'
@@ -110,6 +111,7 @@ export class Workspace extends Context.Service<
     readonly setPaused: (memberId: string, until: number) => Effect.Effect<void>
     readonly setMuted: (memberId: string, channelId: string, isMuted: boolean) => Effect.Effect<void, InvalidChange>
     readonly setStarred: (memberId: string, channelId: string, isStarred: boolean) => Effect.Effect<void, InvalidChange>
+    readonly setNotify: (memberId: string, channelId: string, level: NotifyLevel) => Effect.Effect<void, InvalidChange>
     readonly createChannel: (input: NewChannelInput, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly joinChannel: (channelId: string, actorId: string) => Effect.Effect<Channel, InvalidChange>
     readonly leaveChannel: (channelId: string, actorId: string) => Effect.Effect<void, InvalidChange>
@@ -163,6 +165,7 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
   setPaused: (memberId, until) => backend.run(setPaused(memberId, until)),
   setMuted: (memberId, channelId, isMuted) => backend.run(setMuted(memberId, channelId, isMuted)),
   setStarred: (memberId, channelId, isStarred) => backend.run(setStarred(memberId, channelId, isStarred)),
+  setNotify: (memberId, channelId, level) => backend.run(setNotify(memberId, channelId, level)),
   createChannel: (input, actorId) => backend.run(createChannel(input, actorId)),
   joinChannel: (channelId, actorId) => backend.run(joinChannel(channelId, actorId)),
   leaveChannel: (channelId, actorId) => backend.run(leaveChannel(channelId, actorId)),

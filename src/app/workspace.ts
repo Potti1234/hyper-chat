@@ -1,7 +1,7 @@
 import { Data, Effect } from 'effect'
 
 import { activityOf } from './activity'
-import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_FILES, MAX_MESSAGE, MAX_TOPIC, type Attachment, type Member, type Message, type Preferences, type Read, type Saved, type SavedState, canRead, channelSlug, inChannel, isMemberOf, preferencesOf } from './domain'
+import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_FILES, MAX_MESSAGE, MAX_TOPIC, type Attachment, type Member, type Message, type NotifyLevel, type Preferences, type Read, type Saved, type SavedState, canRead, channelSlug, defaultNotify, inChannel, isMemberOf, notifyLevel, preferencesOf } from './domain'
 import { isSidebarSlug } from './preferences'
 import { STATUS_EMOJI, isEmoji } from './emoji'
 import { MAX_NAME, MAX_PRONOUNS, MAX_STATUS, MAX_TITLE, isTimeZone } from './profile'
@@ -75,7 +75,7 @@ const updateMember = (data: WorkspaceData, memberId: string, patch: Partial<Memb
   return (Object.keys(patch) as ReadonlyArray<keyof Member>).every(key => member[key] === next[key]) ? data : { ...data, members: replace(data.members, next) }
 }
 
-const clearMember = (data: WorkspaceData, memberId: string, key: 'status' | 'pausedUntil' | 'muted' | 'starred'): WorkspaceData => {
+const clearMember = (data: WorkspaceData, memberId: string, key: 'status' | 'pausedUntil' | 'muted' | 'starred' | 'notify'): WorkspaceData => {
   const member = data.members.find(candidate => candidate.id === memberId)
   if (member === undefined || member[key] === undefined) return data
   const { [key]: _cleared, ...rest } = member
@@ -154,6 +154,21 @@ export const setMuted = (memberId: string, channelId: string, isMuted: boolean):
 
 /** Stars a conversation for one member, or takes the star off. */
 export const setStarred = (memberId: string, channelId: string, isStarred: boolean): Op<void, InvalidChange> => setListed('starred', memberId, channelId, isStarred)
+
+/** Sets what a member hears about from one conversation; the default level
+ *  is stored as no entry at all. */
+export const setNotify =
+  (memberId: string, channelId: string, level: NotifyLevel): Op<void, InvalidChange> =>
+  data => {
+    const member = data.members.find(candidate => candidate.id === memberId)
+    if (member === undefined) return invalid('Unknown member.')
+    const channel = data.channels.find(candidate => candidate.id === channelId)
+    if (channel === undefined || !canRead(channel, memberId) || !isMemberOf(channel, memberId)) return invalid('Join the conversation first.')
+    if (notifyLevel(member, channel) === level) return unchanged(undefined, data)
+    const { [channelId]: _previous, ...others } = member.notify ?? {}
+    const after = level === defaultNotify(channel.kind) ? others : { ...others, [channelId]: level }
+    return unchanged(undefined, Object.keys(after).length === 0 ? clearMember(data, memberId, 'notify') : updateMember(data, memberId, { notify: after }))
+  }
 
 /** Pauses notifications until then; 0 (or a moment past) resumes them. */
 export const setPaused =

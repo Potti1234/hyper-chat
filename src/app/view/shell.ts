@@ -7,7 +7,7 @@ import { button, buttonLink } from '@/ui/button'
 import { input } from '@/ui/input'
 
 import { activityOf, unseenCount } from '../activity'
-import { ACTIVITY_READ, type Channel, ChannelKind, type Member, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, isMuted, isStarred, mentions, readAt } from '../domain'
+import { ACTIVITY_READ, type Channel, ChannelKind, type Member, type Message, type NotifyLevel, canRead, compareChannels, conversationName, dmPartners, inChannel, isMemberOf, isMuted, isStarred, mentions, notifyLevel, readAt } from '../domain'
 import { isPaused } from '../profile'
 import type { WorkspaceState } from '../store'
 import { box, slack } from './design'
@@ -42,6 +42,11 @@ export type Nav = typeof Nav.Type
 
 export const emptyNav: Nav = { channels: [], dms: [], activity: 0 }
 
+/** The sidebar badge: every unread message at "all", unread mentions of you
+ *  at "mentions" (the channel default), none at "nothing". */
+const badgeCount = (level: NotifyLevel, unread: ReadonlyArray<Message>, me: Member): number =>
+  level === 'all' ? unread.length : level === 'mentions' ? unread.filter(message => mentions(message.text, me)).length : 0
+
 const navRow = (state: WorkspaceState, channel: Channel, me: Member): NavRow => {
   const seen = readAt(state.reads, me.id, channel.id)
   const partnerIds = channel.kind === 'dm' ? dmPartners(channel, me.id) : []
@@ -51,8 +56,7 @@ const navRow = (state: WorkspaceState, channel: Channel, me: Member): NavRow => 
     label: conversationName(channel, state.members, me.id),
     kind: channel.kind,
     isUnread: unread.length > 0,
-    // Every unread direct message counts, like a mention.
-    mentions: channel.kind === 'dm' ? unread.length : unread.filter(message => mentions(message.text, me)).length,
+    mentions: badgeCount(notifyLevel(me, channel), unread, me),
     partnerIds,
     isOnline: partnerIds.length === 1 && state.online.includes(partnerIds[0] ?? ''),
     isMuted: isMuted(me, channel.id),
