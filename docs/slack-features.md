@@ -38,7 +38,7 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Pause notifications (DND) | Snooze for a period | A flag with a moon icon on the avatar — **done** (30 min to 24 h from your profile; Resume) |
 | Profile | Name, display name, title, pronouns, local time, status, "Message" button | Profile pane with name, title, local time, status, Message button — **done** (`/people/:id`; names in messages link to it; you edit your name, title, pronouns and time zone) |
 | People directory | Searchable list of members | People view — **done** (`/people`, cards filtered by name, handle or title) |
-| Invite people | Email invites | `npm run user:create`, admins add accounts — **planned** (CLI) |
+| Invite people | Email invites | **done** (CLI): `npm run user:create -- --name … --email … --password …` creates an account that joins #general; duplicate emails and short passwords are refused. No email invites |
 | SSO, SCIM, Enterprise Grid, billing | — | **out of scope** (no external accounts) |
 
 ## 3. Conversations
