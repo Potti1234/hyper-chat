@@ -19,7 +19,7 @@ const url = process.env['TEST_DATABASE_URL']
 
 const reset = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
-  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, saves, passwords, presence, files CASCADE`
+  yield* sql`DROP TABLE IF EXISTS workspace_meta, members, channels, messages, reads, saves, scheduled, passwords, presence, files CASCADE`
 }).pipe(Effect.provide(Postgres.clientLayerFor(url ?? '')))
 
 /** One store, as one app process would build it. */
@@ -52,8 +52,10 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         yield* one.setMuted('mem_casey', 'ch_general', true)
         yield* one.setStarred('mem_casey', 'ch_general', true)
         yield* one.setNotify('mem_casey', 'ch_general', 'nothing')
+        const later = yield* one.scheduleMessage('ch_general', 'Sent later', 'mem_avery', Date.now() + 3_600_000)
+        yield* one.setReminder(message.id, 'mem_blake', Date.now() + 1_200_000)
         yield* two.changes.pipe(
-          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1 && item.pinnedBy === 'mem_blake') && state.saves.some(saved => saved.messageId === message.id && saved.state === 'done') && state.messages.some(item => item.id === reply.id) && state.members.some(member => member.id === 'mem_casey' && member.pausedUntil !== undefined && member.preferences?.sidebar === 'lagoon' && member.muted?.includes('ch_general') === true && member.starred?.includes('ch_general') === true && member.notify?.['ch_general'] === 'nothing')),
+          Stream.filter(state => state.messages.some(item => item.id === message.id && item.text === 'Persisted and edited' && item.reactions.length === 1 && item.pinnedBy === 'mem_blake') && state.saves.some(saved => saved.messageId === message.id && saved.state === 'done') && state.messages.some(item => item.id === reply.id) && state.members.some(member => member.id === 'mem_casey' && member.pausedUntil !== undefined && member.preferences?.sidebar === 'lagoon' && member.muted?.includes('ch_general') === true && member.starred?.includes('ch_general') === true && member.notify?.['ch_general'] === 'nothing') && state.scheduled.some(item => item.id === later.id) && state.saves.some(saved => saved.memberId === 'mem_blake' && saved.remindAt !== undefined)),
           Stream.runHead,
           Effect.timeout('5 seconds'),
         )
@@ -72,6 +74,10 @@ describe.skipIf(url === undefined)('workspace in Postgres', () => {
         assert.deepStrictEqual(casey?.starred, ['ch_general'])
         assert.deepStrictEqual(casey?.notify, { ch_general: 'nothing' })
         assert.isTrue(restarted.saves.some(saved => saved.memberId === 'mem_casey' && saved.messageId === message.id && saved.state === 'done'))
+        assert.strictEqual(restarted.scheduled.find(item => item.id === later.id)?.text, 'Sent later')
+        assert.isAbove(restarted.saves.find(saved => saved.memberId === 'mem_blake' && saved.messageId === message.id)?.remindAt ?? 0, 0)
+        yield* one.cancelScheduled(later.id, 'mem_avery')
+        yield* two.changes.pipe(Stream.filter(state => state.scheduled.length === 0), Stream.runHead, Effect.timeout('5 seconds'))
         yield* one.deleteMessage(message.id, 'mem_avery')
         yield* two.changes.pipe(Stream.filter(state => !state.messages.some(item => item.id === message.id || item.id === reply.id)), Stream.runHead, Effect.timeout('5 seconds'))
         // Presence: a page connected in one process shows as active in the other.

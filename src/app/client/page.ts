@@ -18,9 +18,11 @@ import { textarea } from '@/ui/textarea'
 
 import { requireMember } from '../auth'
 import { Files, MAX_FILE_BYTES } from '../files'
-import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, isImage, isMuted, isStarred, NotifyLevel, notifyLevel, preferencesOf, readAt } from '../domain'
+import { Attachment, Channel, DEFAULT_CHANNEL, MAX_FILES, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_MESSAGE, MAX_TOPIC, channelSlug, Member, Message as ChatMessage, canRead, conversationName, dayLabel, dayOf, type Viewer, dmPartners, formatTime, inChannel, isMemberOf, isImage, isMuted, isStarred, NotifyLevel, notifyLevel, preferencesOf, readAt, Scheduled } from '../domain'
 import { EMOJI, QUICK_REACTIONS, emojiName, isEmoji, searchEmoji } from '../emoji'
-import { Workspace, type WorkspaceState, presenceWhile } from '../store'
+import { InvalidChange, Workspace, type WorkspaceState, presenceWhile } from '../store'
+import { timeZoneOf } from '../profile'
+import { REMIND_CHOICES, RemindChoice, SCHEDULE_CHOICES, ScheduleChoice, type WhenChoice, choiceLabel, inSentence, whenAt, whenLabel } from '../when'
 import { sameIds } from '../presence'
 import { threadTypingKey, typingIn } from '../typing'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
@@ -55,7 +57,7 @@ export type Where = typeof Where.Type
 
 // MODEL
 
-export const DetailsTab = S.Literals(['about', 'members', 'settings', 'pins', 'files'])
+export const DetailsTab = S.Literals(['about', 'members', 'settings', 'pins', 'files', 'scheduled'])
 export type DetailsTab = typeof DetailsTab.Type
 export const DetailsField = S.Literals(['name', 'topic', 'description'])
 export type DetailsField = typeof DetailsField.Type
@@ -71,6 +73,8 @@ export const Model = S.Struct({
   pins: S.Array(ChatMessage),
   /** Messages and replies with files, newest first: the Files tab. */
   shared: S.Array(ChatMessage),
+  /** Your messages scheduled here, soonest first. */
+  scheduled: S.Array(Scheduled),
   /** Your messages saved for later (in progress) here. */
   saved: S.Array(S.String),
   nav: Nav,
@@ -96,7 +100,7 @@ export const Model = S.Struct({
   /** Your message being edited in place. */
   editing: S.NullOr(S.Struct({ id: S.String, where: Where, text: S.String, isSaving: S.Boolean })),
   /** The emoji picker or a message's menu, anchored to its button. */
-  overlay: S.NullOr(S.Struct({ kind: S.Literals(['emoji', 'actions']), messageId: S.String, where: Where, anchor: S.String })),
+  overlay: S.NullOr(S.Struct({ kind: S.Literals(['emoji', 'actions', 'schedule', 'remind']), messageId: S.String, where: Where, anchor: S.String })),
   /** The open thread pane and its composer. */
   thread: S.NullOr(S.Struct({ id: S.String, draft: S.String, alsoSend: S.Boolean, isSending: S.Boolean, uploads: S.Array(Attachment), uploading: S.Number })),
   emojiQuery: S.String,
@@ -147,6 +151,14 @@ export const Message = defineMessageUnion({
   ClickedCopyLink: { messageId: S.String },
   ClickedSave: { messageId: S.String },
   ClickedPin: { messageId: S.String },
+  ClickedScheduleMenu: {},
+  ClickedSchedule: { choice: ScheduleChoice },
+  SucceededSchedule: { label: S.String },
+  SetReminderFor: { notice: S.String },
+  ClickedRemindMenu: { messageId: S.String, where: Where },
+  ClickedRemind: { messageId: S.String, choice: RemindChoice },
+  ClickedSendScheduled: { id: S.String },
+  ClickedCancelScheduled: { id: S.String },
   ClickedCloseOverlay: {},
   ClickedEdit: { messageId: S.String, where: Where },
   ClickedReplyInThread: { messageId: S.String },
@@ -166,7 +178,7 @@ export const Message = defineMessageUnion({
   SucceededEdit: {},
   SucceededDelete: {},
   ChangedConnection: { isConnected: S.Boolean },
-  GotChannel: { channel: S.NullOr(Channel), members: S.Array(Member), messages: S.Array(ChatMessage), older: S.Number, pins: S.Array(ChatMessage), shared: S.Array(ChatMessage), saved: S.Array(S.String), nav: Nav, me: Member, now: S.Number },
+  GotChannel: { channel: S.NullOr(Channel), members: S.Array(Member), messages: S.Array(ChatMessage), older: S.Number, pins: S.Array(ChatMessage), shared: S.Array(ChatMessage), scheduled: S.Array(Scheduled), saved: S.Array(S.String), nav: Nav, me: Member, now: S.Number },
   SucceededSend: {},
   ClickedJoin: {},
   ClickedOpenDetails: { tab: DetailsTab, field: S.NullOr(DetailsField) },
@@ -209,6 +221,12 @@ export const ClientMessage = S.Union([
   Message.ClickedCopyLink,
   Message.ClickedSave,
   Message.ClickedPin,
+  Message.ClickedScheduleMenu,
+  Message.ClickedSchedule,
+  Message.ClickedRemindMenu,
+  Message.ClickedRemind,
+  Message.ClickedSendScheduled,
+  Message.ClickedCancelScheduled,
   Message.ClickedCloseOverlay,
   Message.ClickedEdit,
   Message.SubmittedEdit,
@@ -261,6 +279,48 @@ export const SendMessage = Command.define('SendMessage', {
   execute: ({ channelId, text, files, actorId }) =>
     Workspace.use(workspace => Effect.tap(workspace.postMessage(channelId, text, actorId, { files }), () => workspace.setTyping(actorId, channelId, false))).pipe(
       Effect.as(Message.SucceededSend()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
+export const ScheduleMessage = Command.define('ScheduleMessage', {
+  args: { channelId: S.String, text: S.String, files: S.Array(Attachment), actorId: S.String, choice: ScheduleChoice },
+  messages: [Message.SucceededSchedule, Message.FailedChange],
+  execute: ({ channelId, text, files, actorId, choice }) =>
+    Workspace.use(workspace =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis
+        const me = yield* workspace.member(actorId)
+        if (me === undefined) return yield* Effect.fail(new InvalidChange({ reason: 'Unknown member.' }))
+        const item = yield* workspace.scheduleMessage(channelId, text, actorId, whenAt(choice, now, timeZoneOf(me)), files)
+        yield* workspace.setTyping(actorId, channelId, false)
+        return Message.SucceededSchedule({ label: whenLabel(item.sendAt, now, me) })
+      }),
+    ).pipe(Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason })))),
+})
+
+export const SetReminder = Command.define('SetReminder', {
+  args: { messageId: S.String, memberId: S.String, choice: RemindChoice },
+  messages: [Message.SetReminderFor, Message.FailedChange],
+  execute: ({ messageId, memberId, choice }) =>
+    Workspace.use(workspace =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis
+        const me = yield* workspace.member(memberId)
+        if (me === undefined) return yield* Effect.fail(new InvalidChange({ reason: 'Unknown member.' }))
+        const remindAt = whenAt(choice, now, timeZoneOf(me))
+        yield* workspace.setReminder(messageId, memberId, remindAt)
+        return Message.SetReminderFor({ notice: `I’ll remind you about this ${inSentence(whenLabel(remindAt, now, me))}.` })
+      }),
+    ).pipe(Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason })))),
+})
+
+export const SendScheduled = Command.define('SendScheduled', {
+  args: { id: S.String, actorId: S.String, isNow: S.Boolean },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ id, actorId, isNow }) =>
+    Workspace.use(workspace => (isNow ? Effect.asVoid(workspace.sendScheduledNow(id, actorId)) : workspace.cancelScheduled(id, actorId))).pipe(
+      Effect.as(Message.CompletedChange()),
       Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
     ),
 })
@@ -462,6 +522,7 @@ export type Flags = Readonly<{
   older: number
   pins: ReadonlyArray<ChatMessage>
   shared: ReadonlyArray<ChatMessage>
+  scheduled: ReadonlyArray<Scheduled>
   saved: ReadonlyArray<string>
   nav: Nav
   now: number
@@ -511,6 +572,14 @@ const markRead = (result: UpdateReturn): UpdateReturn => {
   const latest = newest(model.messages)
   if (!model.isConnected || model.channel === null || !isMemberOf(model.channel, model.me.id) || latest <= model.markedUpTo) return result
   return { model: { ...model, markedUpTo: latest }, commands: [...(result.commands ?? []), MarkRead({ channelId: model.channelId, memberId: model.me.id })] }
+}
+
+const SCHEDULE_ANCHOR = '--schedule-send'
+
+/** The draft's text when it can be sent (or scheduled) as it is. */
+const sendable = (model: Model): string | null => {
+  const text = model.draft.trim()
+  return (text === '' && model.uploads.length === 0) || model.isSending || model.uploading > 0 || !canWrite(model) || text.length > MAX_MESSAGE ? null : text
 }
 
 const send = (model: Model): UpdateReturn => {
@@ -761,6 +830,25 @@ export const updateModel = (model: Model, message: Message): UpdateReturn =>
           ? { model }
           : canWrite(model) ? { model: { ...model, overlay: null }, commands: [TogglePin({ messageId, actorId: model.me.id })] } : { model },
       ClickedCloseOverlay: () => ({ model: { ...model, overlay: null } }),
+      ClickedScheduleMenu: () =>
+        sendable(model) === null
+          ? { model }
+          : { model: { ...model, notice: null, overlay: model.overlay?.kind === 'schedule' ? null : { kind: 'schedule', messageId: '', where: 'channel', anchor: SCHEDULE_ANCHOR } } },
+      ClickedSchedule: ({ choice }) => {
+        const text = sendable(model)
+        if (text === null) return { model: { ...model, overlay: null } }
+        return { model: { ...model, overlay: null, isSending: true }, commands: [ScheduleMessage({ channelId: model.channelId, text, files: model.uploads, actorId: model.me.id, choice })] }
+      },
+      SucceededSchedule: ({ label }) => ({ model: withFocus({ ...model, draft: '', uploads: [], isSending: false, notice: `Your message will be sent ${inSentence(label)}.` }, '#composer') }),
+      ClickedRemindMenu: ({ messageId, where }) =>
+        model.messages.some(message => message.id === messageId) ? { model: { ...model, overlay: { kind: 'remind', messageId, where, anchor: anchorOf(messageId, 'more', where) } } } : { model },
+      ClickedRemind: ({ messageId, choice }) =>
+        model.channel === null || !model.messages.some(message => message.id === messageId)
+          ? { model: { ...model, overlay: null } }
+          : { model: { ...model, overlay: null, saved: model.saved.includes(messageId) ? model.saved : [...model.saved, messageId] }, commands: [SetReminder({ messageId, memberId: model.me.id, choice })] },
+      SetReminderFor: ({ notice }) => ({ model: { ...model, notice } }),
+      ClickedSendScheduled: ({ id }) => (model.scheduled.some(item => item.id === id) && canWrite(model) ? { model, commands: [SendScheduled({ id, actorId: model.me.id, isNow: true })] } : { model }),
+      ClickedCancelScheduled: ({ id }) => (model.scheduled.some(item => item.id === id) ? { model, commands: [SendScheduled({ id, actorId: model.me.id, isNow: false })] } : { model }),
       ClickedEdit: ({ messageId, where }) => startEdit(model, messageId, where),
       ClickedReplyInThread: ({ messageId }) => openThread(model, messageId),
       ClickedCloseThread: () => ({ model: withFocus({ ...model, thread: null, editing: model.editing?.where === 'thread' ? null : model.editing, overlay: model.overlay?.where === 'thread' ? null : model.overlay }, '#composer') }),
@@ -867,7 +955,7 @@ export const update = (model: Model, message: Message): UpdateReturn => {
 
 // SUBSCRIPTION
 
-type Slice = Readonly<{ channel: Channel | null; members: ReadonlyArray<Member>; messages: ReadonlyArray<ChatMessage>; older: number; pins: ReadonlyArray<ChatMessage>; shared: ReadonlyArray<ChatMessage>; saved: ReadonlyArray<string>; nav: Nav; me: Member | null }>
+type Slice = Readonly<{ channel: Channel | null; members: ReadonlyArray<Member>; messages: ReadonlyArray<ChatMessage>; older: number; pins: ReadonlyArray<ChatMessage>; shared: ReadonlyArray<ChatMessage>; scheduled: ReadonlyArray<Scheduled>; saved: ReadonlyArray<string>; nav: Nav; me: Member | null }>
 
 const savedIn = (state: WorkspaceState, messages: ReadonlyArray<ChatMessage>, memberId: string): ReadonlyArray<string> => {
   const ids = new Set(messages.map(message => message.id))
@@ -889,6 +977,7 @@ export const sliceOf = (state: WorkspaceState, channelId: string, memberId: stri
     older: Math.max(0, listed.length - SHOWN),
     pins: listed.filter(message => message.pinnedBy !== undefined).reverse(),
     shared: all.filter(message => (message.files?.length ?? 0) > 0).reverse(),
+    scheduled: channel === null ? [] : state.scheduled.filter(item => item.authorId === memberId && item.channelId === channelId).sort((a, b) => a.sendAt - b.sendAt),
     saved: channel === null ? [] : savedIn(state, all, memberId),
     nav: me === null ? emptyNav : navOf(state, me),
     me,
@@ -897,7 +986,7 @@ export const sliceOf = (state: WorkspaceState, channelId: string, memberId: stri
 
 const sameItems = <A>(a: ReadonlyArray<A>, b: ReadonlyArray<A>) => a.length === b.length && a.every((item, index) => item === b[index])
 
-const sameSlice = (a: Slice, b: Slice) => a.channel === b.channel && a.members === b.members && sameItems(a.messages, b.messages) && sameItems(a.pins, b.pins) && sameItems(a.shared, b.shared) && a.saved.join() === b.saved.join() && sameNav(a.nav, b.nav) && a.me === b.me
+const sameSlice = (a: Slice, b: Slice) => a.channel === b.channel && a.members === b.members && sameItems(a.messages, b.messages) && sameItems(a.pins, b.pins) && sameItems(a.shared, b.shared) && sameItems(a.scheduled, b.scheduled) && a.saved.join() === b.saved.join() && sameNav(a.nav, b.nav) && a.me === b.me
 
 export const subscriptions = Subscription.make<Model, Message, Workspace>()(entry => ({
   presence: entry(
@@ -1156,18 +1245,35 @@ const actionsMenu = (model: Model, messageId: string, where: Where, anchor: stri
       ...(where === 'channel' && pinnable(model, messageId) !== undefined
         ? [optionRow({ id: 'menu-pin', value: 'pin', isActive: false, onClick: Message.ClickedPin({ messageId }), children: [Icon.icon(model.pins.some(pin => pin.id === messageId) ? 'x' : 'pin', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: [model.pins.some(pin => pin.id === messageId) ? 'Un-pin from this conversation' : 'Pin to this conversation'] }, h)] }, h)]
         : []),
+      optionRow({ id: 'menu-remind', value: 'remind', isActive: false, onClick: Message.ClickedRemindMenu({ messageId, where }), children: [Icon.icon('alarm-clock', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Remind me about this'] }, h), Icon.icon('chevron-right', { class: 'size-4 text-muted-foreground' }, h)] }, h),
       optionRow({ id: 'menu-copy-link', value: 'copy-link', isActive: false, onClick: Message.ClickedCopyLink({ messageId }), copyPath: `/archives/${model.channelId}/${messageId}`, children: [Icon.icon('link', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Copy link'] }, h)] }, h),
       ...(isMine ? [optionRow({ id: 'menu-edit', value: 'edit', isActive: false, onClick: Message.ClickedEdit({ messageId, where }), children: [Icon.icon('pencil', { class: 'size-4 text-muted-foreground' }, h), box({ as: 'span', class: 'flex-1', children: ['Edit message'] }, h)] }, h),
       optionRow({ id: 'menu-delete', value: 'delete', isActive: false, onClick: Message.ClickedDelete({ messageId }), children: [Icon.icon('trash-2', { class: 'size-4 text-destructive' }, h), box({ as: 'span', class: 'flex-1 text-destructive', children: ['Delete message…'] }, h)] }, h)] : []),
     ] }, h)
 }
 
+const whenRow = (model: Model, id: string, when: WhenChoice, onClick: Message, h: HtmlBuilder<Message>): Html =>
+  optionRow({ id, value: when, isActive: false, onClick, children: [box({ as: 'span', class: 'flex-1', children: [choiceLabel(when, model.now, model.me)] }, h)] }, h)
+
+/** Slack's "Schedule for later" and "Remind me about this" menus. */
+const whenMenu = (model: Model, kind: 'schedule' | 'remind', messageId: string, anchor: string, h: HtmlBuilder<Message>): Html =>
+  box({ class: 'z-50 flex w-64 flex-col rounded-lg border bg-popover p-1 text-popover-foreground shadow-[0_8px_30px_rgb(0_0_0/0.12)]', style: anchoredStyle(anchor, { side: kind === 'schedule' ? 'top' : 'bottom', align: 'end' }), attributes: [h.Id(kind === 'schedule' ? 'schedule-menu' : 'remind-menu'), h.Role('menu'), h.AriaLabel(kind === 'schedule' ? 'Schedule message' : 'Remind me about this')], children: [
+      box({ class: 'px-2 pt-1.5 pb-1 text-[13px] font-semibold text-muted-foreground', children: [kind === 'schedule' ? 'Schedule message' : 'Remind me about this'] }, h),
+      ...(kind === 'schedule'
+        ? SCHEDULE_CHOICES.map(when => whenRow(model, `schedule-${when}`, when, Message.ClickedSchedule({ choice: when }), h))
+        : REMIND_CHOICES.map(when => whenRow(model, `remind-${when}`, when, Message.ClickedRemind({ messageId, choice: when }), h))),
+    ] }, h)
+
 const overlayView = (model: Model, h: HtmlBuilder<Message>): Html =>
   box({ class: 'contents', attributes: [h.Id('overlay')], children: model.overlay === null
       ? []
       : [
           box({ class: 'fixed inset-0 z-40', attributes: [h.AriaHidden(true), h.OnClick(Message.ClickedCloseOverlay())] }, h),
-          model.overlay.kind === 'emoji' ? emojiPicker(model, model.overlay.anchor, h) : actionsMenu(model, model.overlay.messageId, model.overlay.where, model.overlay.anchor, h),
+          model.overlay.kind === 'emoji'
+            ? emojiPicker(model, model.overlay.anchor, h)
+            : model.overlay.kind === 'schedule' || model.overlay.kind === 'remind'
+              ? whenMenu(model, model.overlay.kind, model.overlay.messageId, model.overlay.anchor, h)
+              : actionsMenu(model, model.overlay.messageId, model.overlay.where, model.overlay.anchor, h),
         ] }, h)
 
 const fieldLabel: Record<DetailsField, string> = { name: 'Channel name', topic: 'Topic', description: 'Description' }
@@ -1250,6 +1356,22 @@ const filesTab = (model: Model, h: HtmlBuilder<Message>): Html =>
               ] }, h))
         }) }, h)
 
+/** Your messages scheduled here: send now or cancel (Slack's Scheduled list). */
+const scheduledTab = (model: Model, h: HtmlBuilder<Message>): Html =>
+  box({ as: 'ul', class: 'flex max-h-[360px] flex-col gap-2 overflow-y-auto', attributes: [h.Id('scheduled-list'), h.AriaLabel('Scheduled messages'), h.DataAttribute('keep-scroll', 'scheduled-list')], children: model.scheduled.length === 0
+      ? [box({ as: 'li', class: 'py-6 text-center text-[14px] text-muted-foreground', children: ['Nothing is scheduled here.'] }, h)]
+      : model.scheduled.map(item =>
+          box({ as: 'li', class: 'flex flex-col gap-1 rounded-lg border p-3', attributes: [h.Key(item.id), h.DataAttribute('scheduled', item.id)], children: [
+              box({ class: 'flex items-center gap-1.5 text-[13px] font-semibold text-muted-foreground', children: [Icon.icon('clock', { class: 'size-4' }, h), `Sends ${inSentence(whenLabel(item.sendAt, model.now, model.me))}`] }, h),
+              box({ class: 'min-w-0 break-words text-[15px]', children: [item.text === '' ? `${item.files?.length ?? 0} file${(item.files?.length ?? 0) === 1 ? '' : 's'}` : item.text] }, h),
+              ...((item.files?.length ?? 0) > 0 && item.text !== '' ? [box({ class: 'text-[13px] text-muted-foreground', children: [`${item.files?.length ?? 0} file${(item.files?.length ?? 0) === 1 ? '' : 's'} attached`] }, h)] : []),
+              box({ class: 'flex justify-end gap-2', children: [
+                  button({ id: `cancel-scheduled-${item.id}`, variant: 'outline', size: 'sm', onClick: Message.ClickedCancelScheduled({ id: item.id }), children: ['Cancel'] }, h),
+                  button({ id: `send-scheduled-${item.id}`, variant: 'default', size: 'sm', isDisabled: !canWrite(model), onClick: Message.ClickedSendScheduled({ id: item.id }), children: ['Send now'] }, h),
+                ] }, h),
+            ] }, h),
+        ) }, h)
+
 const NOTIFY_CHOICES: ReadonlyArray<Readonly<{ level: NotifyLevel; label: string; description: string; icon: Icon.IconName }>> = [
   { level: 'all', label: 'All new messages', description: 'Every unread message counts on the badge', icon: 'bell' },
   { level: 'mentions', label: 'Mentions', description: 'Only @mentions of you, @here and @channel', icon: 'at-sign' },
@@ -1272,7 +1394,7 @@ const detailsDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
   const isMember = isMemberOf(channel, model.me.id)
   const tab = (id: DetailsTab, label: string) =>
     button({ variant: model.about.tab === id ? 'tab-active' : 'tab', size: 'tab', isPressed: model.about.tab === id, onClick: Message.ClickedDetailsTab({ tab: id }), children: [label] }, h)
-  const filesTabs = model.shared.length === 0 ? [] : [tab('files', `Files ${fileCount(model)}`)]
+  const filesTabs = [...(model.shared.length === 0 ? [] : [tab('files', `Files ${fileCount(model)}`)]), ...(model.scheduled.length === 0 ? [] : [tab('scheduled', `Scheduled ${model.scheduled.length}`)])]
   return Dialog.dialog({
     model: model.details,
     toParentMessage: message => Message.GotDetailsDialog({ message }),
@@ -1280,7 +1402,9 @@ const detailsDialog = (model: Model, h: HtmlBuilder<Message>): Html => {
     content: slots => [
       box({ class: 'flex flex-col gap-4', attributes: [h.Id('details-body')], children: [
           box({ class: 'flex items-center gap-1', attributes: [h.AriaLabel('Details tabs')], children: channel.kind === 'dm' ? [tab('pins', `Pins ${model.pins.length}`), ...filesTabs, tab('settings', 'Settings')] : [tab('about', 'About'), tab('members', `Members ${channel.memberIds.length}`), ...(model.pins.length === 0 ? [] : [tab('pins', `Pins ${model.pins.length}`)]), ...filesTabs, ...(isMember ? [tab('settings', 'Settings')] : [])] }, h),
-          model.about.tab === 'files'
+          model.about.tab === 'scheduled'
+            ? scheduledTab(model, h)
+            : model.about.tab === 'files'
             ? filesTab(model, h)
             : model.about.tab === 'settings' && isMember
             ? box({ class: 'flex flex-col gap-4', children: [
@@ -1503,6 +1627,13 @@ const headerView = (model: Model, h: HtmlBuilder<Message>): Html => {
 
 const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
   box({ class: 'shrink-0', attributes: [h.Id('composer-area')], children: [
+      ...(model.scheduled.length === 0 || !canWrite(model)
+        ? []
+        : [box({ class: 'mx-5 mb-1 flex items-center gap-1.5 text-[13px] text-muted-foreground', attributes: [h.Id('scheduled-banner')], children: [
+            Icon.icon('clock', { class: 'size-4' }, h),
+            box({ as: 'span', children: [model.scheduled.length === 1 ? '1 scheduled message' : `${model.scheduled.length} scheduled messages`] }, h),
+            button({ id: 'open-scheduled', variant: 'link', size: 'xs', onClick: Message.ClickedOpenDetails({ tab: 'scheduled', field: null }), children: ['See all'] }, h),
+          ] }, h)]),
       canWrite(model)
         ? box({ as: 'form', class: slack.composer, attributes: [h.OnSubmit(Message.SubmittedDraft()), h.AllowDrop(), h.OnDropFiles(files => Message.ChoseFiles({ files }))], children: [
               formatBar(h),
@@ -1512,6 +1643,7 @@ const composerView = (model: Model, h: HtmlBuilder<Message>): Html =>
                   fileButton({ id: 'attach', ariaLabel: 'Attach files', title: 'Upload from your computer', isMultiple: true, size: 'icon-md', isDisabled: model.isSending, onFiles: files => Message.ChoseFiles({ files }), children: [Icon.icon('plus', {}, h)] }, h),
                   box({ as: 'span', class: 'flex-1 text-[12px] text-muted-foreground', children: [model.draft.includes('\n') ? 'Shift + Return to add a new line' : ''] }, h),
                   button({ id: 'send', variant: 'send', size: 'icon-md', type: 'submit', ariaLabel: 'Send now', title: 'Send now', isDisabled: (model.draft.trim() === '' && model.uploads.length === 0) || model.uploading > 0 || model.isSending, children: [Icon.icon('send', {}, h)] }, h),
+                  button({ id: 'schedule-send', variant: 'send', size: 'icon-sm', ariaLabel: 'Schedule for later', title: 'Schedule for later', isDisabled: sendable(model) === null, onClick: Message.ClickedScheduleMenu(), anchorName: SCHEDULE_ANCHOR, popup: 'menu', isExpanded: model.overlay?.kind === 'schedule', children: [Icon.icon('chevron-down', {}, h)] }, h),
                 ] }, h),
             ] }, h)
         : box({ class: 'mx-5 mb-5 flex flex-col items-center gap-3 rounded-lg border bg-muted px-4 py-5 text-center text-[15px]', attributes: [h.Id('composer-readonly')], children: [
@@ -1555,7 +1687,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
           box({ as: 'main', class: slack.main, attributes: model.thread === null ? [] : [h.DataAttribute('split', '')], children: [
               region(h, { id: 'conversation-header', deps: [model.channel, model.members, model.me.id, model.me.muted, model.me.starred, model.pins.length, model.shared], render: () => headerView(model, h) }),
               region(h, { id: 'message-list', deps: [model.messages, model.members, model.readMarker, model.me.id, model.older, model.channel, model.now, model.editing, model.overlay, model.thread?.id, model.saved, model.pins, model.me.timeZone, model.me.preferences], render: () => listView(model, h) }),
-              region(h, { id: 'composer-area', deps: [model.draft, model.uploads, model.uploading, model.isSending, model.isJoining, model.channel, model.me.id, model.members], render: () => composerView(model, h) }),
+              region(h, { id: 'composer-area', deps: [model.draft, model.uploads, model.uploading, model.isSending, model.isJoining, model.channel, model.me.id, model.members, model.scheduled, model.overlay?.kind], render: () => composerView(model, h) }),
               region(h, { id: 'typing', deps: [model.typing, model.members], render: () => typingView(model, h) }),
             ] }, h),
           region(h, { id: 'thread', deps: [model.thread, model.threadTyping, model.messages, model.members, model.channel, model.me.id, model.editing, model.overlay, model.now, model.saved, model.me.timeZone, model.me.preferences], render: () => threadView(model, h) }),
@@ -1573,8 +1705,8 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
               ]),
             ] }, h),
       }),
-      region(h, { id: 'overlay', deps: [model.overlay, model.emojiQuery], render: () => overlayView(model, h) }),
-      region(h, { id: 'details', deps: [model.details, model.about, model.channel, model.members, model.me.id, model.pins, model.shared, model.now, model.me.timeZone, model.me.preferences], render: () => box({ attributes: [h.Id('details')], children: [detailsDialog(model, h)] }, h) }),
+      region(h, { id: 'overlay', deps: [model.overlay, model.emojiQuery, model.now, model.me], render: () => overlayView(model, h) }),
+      region(h, { id: 'details', deps: [model.details, model.about, model.channel, model.members, model.me.id, model.pins, model.shared, model.scheduled, model.now, model.me.timeZone, model.me.preferences], render: () => box({ attributes: [h.Id('details')], children: [detailsDialog(model, h)] }, h) }),
       region(h, { id: 'confirm', deps: [model.confirm, model.deleting, model.messages, model.members], render: () => box({ attributes: [h.Id('confirm')], children: [confirmDialog(model, h)] }, h) }),
       region(h, {
         id: 'notice',
@@ -1583,7 +1715,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
           box({ class: 'pointer-events-none fixed right-4 bottom-24 z-50', attributes: [h.Id('notice'), h.AriaLive('polite')], children: model.notice === null
               ? []
               : [box({ class: 'pointer-events-auto flex items-center gap-3 rounded-lg border bg-popover px-3.5 py-2.5 text-[14px] shadow-lg', children: [
-                  Icon.icon('circle-alert', { class: 'size-4 text-destructive' }, h),
+                  Icon.icon('info', { class: 'size-4 text-muted-foreground' }, h),
                   box({ as: 'span', children: [model.notice] }, h),
                   button({ variant: 'ghost', size: 'icon-xs', ariaLabel: 'Dismiss', onClick: Message.ClickedDismissNotice(), children: [Icon.x({}, h)] }, h),
                 ] }, h)] }, h),
@@ -1618,7 +1750,7 @@ export const program: Program<Model, Message, ClientMessage, Flags, Workspace | 
       const now = yield* Clock.currentTimeMillis
       const asked = request.params['thread']
       const threadId = slice.messages.some(message => message.id === asked && message.threadId === null) ? (asked ?? null) : null
-      return { me, channelId, channel: slice.channel, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, shared: slice.shared, saved: slice.saved, nav: slice.nav, now, readMarker: readAt(state.reads, me.id, channelId), threadId }
+      return { me, channelId, channel: slice.channel, members: slice.members, messages: slice.messages, older: slice.older, pins: slice.pins, shared: slice.shared, scheduled: slice.scheduled, saved: slice.saved, nav: slice.nav, now, readMarker: readAt(state.reads, me.id, channelId), threadId }
     }),
   init,
   update,

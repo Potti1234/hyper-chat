@@ -238,8 +238,29 @@ export const ACTIVITY_READ = 'activity'
 export const SavedState = S.Literals(['saved', 'done'])
 export type SavedState = typeof SavedState.Type
 
-export const Saved = S.Struct({ memberId: S.String, messageId: S.String, state: SavedState, at: S.Number })
+export const Saved = S.Struct({
+  memberId: S.String,
+  messageId: S.String,
+  state: SavedState,
+  at: S.Number,
+  /** "Remind me about this": when the reminder is due. */
+  remindAt: S.optionalKey(S.Number),
+  /** Set once the reminder went off (it shows in Activity). */
+  reminded: S.optionalKey(S.Boolean),
+})
 export type Saved = typeof Saved.Type
+
+/** A message someone scheduled to send later; only they see it until then. */
+export const Scheduled = S.Struct({
+  id: S.String,
+  authorId: S.String,
+  channelId: S.String,
+  text: S.String,
+  files: S.optionalKey(S.Array(Attachment)),
+  sendAt: S.Number,
+  createdAt: S.Number,
+})
+export type Scheduled = typeof Scheduled.Type
 
 export const isSaved = (saves: ReadonlyArray<Saved>, memberId: string, messageId: string): boolean =>
   saves.some(saved => saved.memberId === memberId && saved.messageId === messageId && saved.state === 'saved')

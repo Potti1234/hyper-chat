@@ -186,12 +186,12 @@ const whoOf = (model: Model, item: ActivityItem): string => {
 }
 
 const titleOf = (item: ActivityItem): string => {
-  const where = item.channelKind === 'private' ? item.channelName : `#${item.channelName}`
-  return item.kind === 'mention' ? `Mention in ${where}` : item.kind === 'reply' ? `Thread in ${where}` : `Reaction in ${where}`
+  const where = item.channelKind === 'dm' ? 'a direct message' : item.channelKind === 'private' ? item.channelName : `#${item.channelName}`
+  return item.kind === 'reminder' ? `Reminder: message in ${where}` : item.kind === 'mention' ? `Mention in ${where}` : item.kind === 'reply' ? `Thread in ${where}` : `Reaction in ${where}`
 }
 
 const summaryOf = (model: Model, item: ActivityItem): string =>
-  item.kind === 'reaction' ? `${whoOf(model, item)} reacted ${item.emoji} to your message` : `${whoOf(model, item)}: ${item.message.text}`
+  item.kind === 'reaction' ? `${whoOf(model, item)} reacted ${item.emoji} to your message` : item.kind === 'reminder' ? `You asked to be reminded about this: ${item.message.text}` : `${whoOf(model, item)}: ${item.message.text}`
 
 const whenOf = (model: Model, at: number): string => {
   const day = dayLabel(at, model.now, model.me)
@@ -199,7 +199,7 @@ const whenOf = (model: Model, at: number): string => {
 }
 
 const kindIcon = (item: ActivityItem, h: HtmlBuilder<Message>): Html =>
-  Icon.icon(item.kind === 'mention' ? 'at-sign' : item.kind === 'reply' ? 'message-square-text' : 'smile-plus', { class: 'size-3.5' }, h)
+  Icon.icon(item.kind === 'mention' ? 'at-sign' : item.kind === 'reply' ? 'message-square-text' : item.kind === 'reminder' ? 'alarm-clock' : 'smile-plus', { class: 'size-3.5' }, h)
 
 const tabHref = (tab: Tab, picked: string | null) => {
   const params = [...(tab === 'all' ? [] : [`tab=${tab}`]), ...(picked === null ? [] : [`item=${encodeURIComponent(picked)}`])]

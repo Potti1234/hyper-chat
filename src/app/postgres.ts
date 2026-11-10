@@ -4,7 +4,7 @@ import { PgClient } from '@effect/sql-pg'
 import { Clock, Effect, Layer, Queue, Redacted, Schedule, Schema as S, type Scope, Semaphore, SubscriptionRef } from 'effect'
 import { SqlClient, SqlError } from 'effect/sql'
 
-import { Channel, Member, Message, Read, Saved } from './domain'
+import { Channel, Member, Message, Read, Saved, Scheduled } from './domain'
 import { type Presence, localConnections, sameIds } from './presence'
 import { type Typing, decodeEvent, localTyping } from './typing'
 import { type Backend, type Snapshot, Workspace, fromBackend, newId, snapshotOf } from './store'
@@ -17,7 +17,7 @@ import type { WorkspaceData } from './workspace'
      transaction that holds an advisory lock: it catches up with commits of
      other processes, applies the operation, writes the rows that changed
      (found by reference) and announces the new version with `pg_notify`.
-   - Members, channels, messages, reads and saves are one JSONB document per row,
+   - Members, channels, messages, reads, saves and scheduled messages are one JSONB document per row,
      decoded with their Schema on load. A field added later gets its default
      in `DEFAULTS`, so older rows still load.
    - Startup begins LISTEN before it reads, so no commit falls into a gap.
@@ -43,9 +43,9 @@ export const clientLayer = clientLayerFor(process.env['DATABASE_URL'] ?? DEFAULT
 
 type Sql = SqlClient.SqlClient
 
-type Collection = 'members' | 'channels' | 'messages' | 'reads' | 'saves'
+type Collection = 'members' | 'channels' | 'messages' | 'reads' | 'saves' | 'scheduled'
 
-const TABLES: ReadonlyArray<Collection> = ['members', 'channels', 'messages', 'reads', 'saves']
+const TABLES: ReadonlyArray<Collection> = ['members', 'channels', 'messages', 'reads', 'saves', 'scheduled']
 
 const SCHEMAS = {
   members: S.Array(Member),
@@ -53,6 +53,7 @@ const SCHEMAS = {
   messages: S.Array(Message),
   reads: S.Array(Read),
   saves: S.Array(Saved),
+  scheduled: S.Array(Scheduled),
 } as const
 
 /** Defaults for fields added after the first release (older rows lack them). */
@@ -62,6 +63,7 @@ const DEFAULTS: Readonly<Record<Collection, Readonly<Record<string, unknown>>>> 
   messages: { threadId: null, alsoInChannel: false },
   reads: {},
   saves: {},
+  scheduled: {},
 }
 
 const keyOf = (collection: Collection, row: unknown): string => {
@@ -93,6 +95,7 @@ const load = (sql: Sql): Effect.Effect<Snapshot, SqlError.SqlError | S.SchemaErr
     const messages = yield* Effect.flatMap(rowsOf('messages'), S.decodeUnknownEffect(SCHEMAS.messages))
     const reads = yield* Effect.flatMap(rowsOf('reads'), S.decodeUnknownEffect(SCHEMAS.reads))
     const saves = yield* Effect.flatMap(rowsOf('saves'), S.decodeUnknownEffect(SCHEMAS.saves))
+    const scheduled = yield* Effect.flatMap(rowsOf('scheduled'), S.decodeUnknownEffect(SCHEMAS.scheduled))
     const passwordRows = yield* sql<{ member_id: string; hash: string }>`SELECT member_id, hash FROM passwords`
     const data: WorkspaceData = {
       members,
@@ -100,6 +103,7 @@ const load = (sql: Sql): Effect.Effect<Snapshot, SqlError.SqlError | S.SchemaErr
       messages: [...messages].sort((a, b) => a.createdAt - b.createdAt),
       reads,
       saves,
+      scheduled,
       passwords: Object.fromEntries(passwordRows.map(row => [row.member_id, row.hash])),
     }
     return snapshotOf(Number(meta?.version ?? 1), data)

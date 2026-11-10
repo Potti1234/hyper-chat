@@ -14,6 +14,7 @@ import { Workspace, type WorkspaceState, presenceWhile } from '../store'
 import { Switcher, SwitcherClientEvent, SwitcherEvent, initSwitcher, switcherClientCommands, switcherRegion, updateHost } from '../view/switcher'
 import { box, pageRoot, slack } from '../view/design'
 import { avatar } from '../view/icons'
+import { inSentence, whenLabel } from '../when'
 import { attachmentList, authorName, messageText } from '../view/message'
 import { emptyNav, hasUnread, Nav, navOf, rail, sameNav, topBar, WORKSPACE_NAME } from '../view/shell'
 
@@ -30,6 +31,9 @@ export const LaterItem = S.Struct({
   conversation: S.String,
   channelKind: ChannelKind,
   message: ChatMessage,
+  /** When you asked to be reminded, and whether it has gone off. */
+  remindAt: S.NullOr(S.Number),
+  reminded: S.Boolean,
 })
 export type LaterItem = typeof LaterItem.Type
 
@@ -52,6 +56,7 @@ export const Message = defineMessageUnion({
   ClickedTab: { tab: SavedState },
   ClickedSetState: { messageId: S.String, state: SavedState },
   ClickedRemove: { messageId: S.String },
+  ClickedClearReminder: { messageId: S.String },
   GotSwitcher: { event: SwitcherEvent },
   ChangedConnection: { isConnected: S.Boolean },
   ClickedToggleTheme: {},
@@ -62,7 +67,7 @@ export const Message = defineMessageUnion({
 export type Message = typeof Message.Type
 
 /** What a browser may post (re-checked in update). */
-export const ClientMessage = S.Union([Message.ClickedTab, Message.ClickedSetState, Message.ClickedRemove, S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme])
+export const ClientMessage = S.Union([Message.ClickedTab, Message.ClickedSetState, Message.ClickedRemove, Message.ClickedClearReminder, S.TaggedStruct('GotSwitcher', { event: SwitcherClientEvent }), Message.ClickedToggleTheme])
 export type ClientMessage = typeof ClientMessage.Type
 
 // COMMAND
@@ -83,6 +88,16 @@ export const RemoveSaved = Command.define('RemoveSaved', {
   execute: ({ messageId, memberId }) => Workspace.use(workspace => workspace.removeSaved(messageId, memberId)).pipe(Effect.as(Message.CompletedChange())),
 })
 
+export const ClearReminder = Command.define('ClearReminder', {
+  args: { messageId: S.String, memberId: S.String },
+  messages: [Message.CompletedChange, Message.FailedChange],
+  execute: ({ messageId, memberId }) =>
+    Workspace.use(workspace => workspace.setReminder(messageId, memberId, null)).pipe(
+      Effect.as(Message.CompletedChange()),
+      Effect.catchTag('InvalidChange', ({ reason }) => Effect.succeed(Message.FailedChange({ reason }))),
+    ),
+})
+
 export const SetTheme = Command.define('SetTheme', {
   args: { memberId: S.String, isDark: S.Boolean },
   messages: [Message.CompletedChange],
@@ -99,7 +114,7 @@ export const laterOf = (state: WorkspaceState, me: Member): ReadonlyArray<LaterI
       const message = state.messages.find(candidate => candidate.id === saved.messageId)
       const channel = message === undefined ? undefined : state.channels.find(candidate => candidate.id === message.channelId)
       if (message === undefined || channel === undefined || !canRead(channel, me.id)) return []
-      return [{ state: saved.state, at: saved.at, channelId: channel.id, conversation: conversationName(channel, state.members, me.id), channelKind: channel.kind, message }]
+      return [{ state: saved.state, at: saved.at, channelId: channel.id, conversation: conversationName(channel, state.members, me.id), channelKind: channel.kind, message, remindAt: saved.remindAt ?? null, reminded: saved.reminded === true }]
     })
     .sort((a, b) => b.at - a.at)
 
@@ -132,6 +147,10 @@ export const update = (model: Model, message: Message): UpdateReturn =>
           : { model },
       ClickedRemove: ({ messageId }) =>
         model.items.some(item => item.message.id === messageId) ? { model: withState(model, messageId, null), commands: [RemoveSaved({ messageId, memberId: model.me.id })] } : { model },
+      ClickedClearReminder: ({ messageId }) =>
+        model.items.some(item => item.message.id === messageId && item.remindAt !== null)
+          ? { model: { ...model, items: model.items.map(item => (item.message.id === messageId ? { ...item, remindAt: null, reminded: false } : item)) }, commands: [ClearReminder({ messageId, memberId: model.me.id })] }
+          : { model },
       GotSwitcher: ({ event }) => updateHost(model, event, event => Message.GotSwitcher({ event })),
       ChangedConnection: ({ isConnected }) => ({ model: { ...model, isConnected } }),
       ClickedToggleTheme: () => ({ model, commands: [SetTheme({ memberId: model.me.id, isDark: !model.me.isDark })] }),
@@ -153,7 +172,7 @@ const sliceOf = (state: WorkspaceState, memberId: string): Slice => {
 const sameItems = (a: ReadonlyArray<LaterItem>, b: ReadonlyArray<LaterItem>) =>
   a.length === b.length && a.every((item, index) => {
     const other = b[index] as LaterItem
-    return item.message === other.message && item.state === other.state && item.at === other.at && item.conversation === other.conversation
+    return item.message === other.message && item.state === other.state && item.at === other.at && item.conversation === other.conversation && item.remindAt === other.remindAt && item.reminded === other.reminded
   })
 const sameSlice = (a: Slice, b: Slice) => a.me === b.me && a.members === b.members && sameItems(a.items, b.items) && sameNav(a.nav, b.nav)
 
@@ -201,6 +220,9 @@ const itemView = (model: Model, item: LaterItem, h: HtmlBuilder<Message>): Html 
           box({ class: 'flex items-baseline gap-2 text-[12px] text-muted-foreground', children: [
               box({ as: 'span', class: 'font-semibold', children: [item.message.threadId === null ? where : `Thread in ${where}`] }, h),
               box({ as: 'span', children: [`Saved ${dayLabel(item.at, model.now, model.me).toLowerCase()}`] }, h),
+              ...(item.remindAt === null
+                ? []
+                : [box({ as: 'span', class: item.reminded ? 'flex items-center gap-1 font-semibold text-destructive' : 'flex items-center gap-1 font-semibold text-foreground', attributes: [h.DataAttribute('reminder', item.message.id)], children: [Icon.icon('alarm-clock', { class: 'size-3.5' }, h), item.reminded ? 'Reminder is due' : `Reminder ${inSentence(whenLabel(item.remindAt, model.now, model.me))}`] }, h)]),
             ] }, h),
           box({ class: 'flex items-baseline gap-2', children: [
               authorName(author, model.now, h),
@@ -213,6 +235,7 @@ const itemView = (model: Model, item: LaterItem, h: HtmlBuilder<Message>): Html 
           item.state === 'saved'
             ? button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Mark complete', title: 'Mark complete', onClick: Message.ClickedSetState({ messageId: item.message.id, state: 'done' }), children: [Icon.icon('circle-check', {}, h)] }, h)
             : button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Move to in progress', title: 'Move to in progress', onClick: Message.ClickedSetState({ messageId: item.message.id, state: 'saved' }), children: [Icon.icon('rotate-ccw', {}, h)] }, h),
+          ...(item.remindAt === null ? [] : [button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Remove reminder', title: 'Remove reminder', onClick: Message.ClickedClearReminder({ messageId: item.message.id }), marker: ['clear-reminder', item.message.id], children: [Icon.icon('alarm-clock-off', {}, h)] }, h)]),
           button({ variant: 'toolbar', size: 'icon-sm', ariaLabel: 'Remove from Later', title: 'Remove from Later', onClick: Message.ClickedRemove({ messageId: item.message.id }), children: [Icon.icon('x', {}, h)] }, h),
           buttonLink({ href: hrefOf(item), variant: 'outline', size: 'sm', children: ['Open'] }, h),
         ] }, h),

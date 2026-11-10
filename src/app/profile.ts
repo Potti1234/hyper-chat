@@ -53,18 +53,18 @@ export const CLEAR_AFTER_LABELS: Readonly<Record<ClearAfter, string>> = {
 export const isClearAfter = (value: string): value is ClearAfter => (CLEAR_AFTER as ReadonlyArray<string>).includes(value)
 
 /** Milliseconds until the next local midnight in `zone`. */
-const untilMidnight = (now: number, zone: string): number => {
+export const untilMidnight = (now: number, zone: string): number => {
   const parts = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23', timeZone: zone }).formatToParts(now)
   const part = (type: string) => Number(parts.find(candidate => candidate.type === type)?.value ?? 0)
   return ((24 - part('hour')) * 3600 - part('minute') * 60 - part('second')) * 1000
 }
 
-const DAY = 24 * 3600 * 1000
+export const DAY = 24 * 3600 * 1000
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 /** Days from today to the end of Sunday in `zone`, today included. */
-const daysLeftInWeek = (now: number, zone: string): number =>
+export const daysLeftInWeek = (now: number, zone: string): number =>
   6 - Math.max(0, WEEKDAYS.indexOf(new Date(now).toLocaleDateString('en-US', { weekday: 'short', timeZone: zone })))
 
 const SPANS: Readonly<Record<'30m' | '1h' | '4h', number>> = { '30m': 30 * 60_000, '1h': 3600_000, '4h': 4 * 3600_000 }

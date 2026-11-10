@@ -175,5 +175,5 @@ export const demoData = (now: number): WorkspaceData => {
     channel.memberIds.map(memberId => ({ memberId, channelId: channel.id, at: now - 120 * minute })),
   )
   const saves: ReadonlyArray<Saved> = [{ memberId: 'mem_avery', messageId: 'msg_demo_6', state: 'saved', at: now - 60 * minute }]
-  return { members: DEMO_MEMBERS, channels, messages, reads, saves, passwords: {} }
+  return { members: DEMO_MEMBERS, channels, messages, reads, saves, scheduled: [], passwords: {} }
 }

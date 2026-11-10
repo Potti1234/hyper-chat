@@ -1,16 +1,18 @@
 import { Schema as S } from 'effect'
 
-import { type Channel, ChannelKind, type Member, type Message, Message as ChatMessage, canRead, isMemberOf, mentions, notifyLevel } from './domain'
+import { type Channel, ChannelKind, type Member, type Message, type Saved, Message as ChatMessage, canRead, isMemberOf, mentions, notifyLevel } from './domain'
 
 /* Slack's Activity: what happened to you, newest first. Mentions of you
    (or @here / @channel) in channels you are in, replies in threads you
    started or replied in, and reactions to your messages. Direct messages
-   have their own tab, so they are left out, like in Slack. */
+   have their own tab, so they are left out, like in Slack. Reminders you
+   set ("Remind me about this") show once they went off, DMs included,
+   until the saved item is completed or removed. */
 
 /** Items listed. */
 export const LISTED = 100
 
-export const ActivityKind = S.Literals(['mention', 'reply', 'reaction'])
+export const ActivityKind = S.Literals(['mention', 'reply', 'reaction', 'reminder'])
 export type ActivityKind = typeof ActivityKind.Type
 
 export const ActivityItem = S.Struct({
@@ -29,7 +31,7 @@ export const ActivityItem = S.Struct({
 })
 export type ActivityItem = typeof ActivityItem.Type
 
-type Data = Readonly<{ channels: ReadonlyArray<Channel>; messages: ReadonlyArray<Message> }>
+type Data = Readonly<{ channels: ReadonlyArray<Channel>; messages: ReadonlyArray<Message>; saves?: ReadonlyArray<Saved> }>
 
 /** Where an item opens: its thread for replies, otherwise the conversation. */
 export const hrefOf = (item: ActivityItem): string =>
@@ -58,6 +60,16 @@ export const activityOf = (data: Data, me: Member): ReadonlyArray<ActivityItem> 
       if (others.length > 0) items.push({ ...base, id: `reaction:${message.id}:${reaction.emoji}`, kind: 'reaction', actorIds: others, emoji: reaction.emoji, at: reaction.at ?? message.createdAt })
     }
   })
+  const reminded = (data.saves ?? []).filter(saved => saved.memberId === me.id && saved.reminded === true && saved.state === 'saved' && saved.remindAt !== undefined)
+  if (reminded.length > 0) {
+    const byId = new Map(data.messages.map(message => [message.id, message]))
+    for (const saved of reminded) {
+      const message = byId.get(saved.messageId)
+      const channel = message === undefined ? undefined : data.channels.find(candidate => candidate.id === message.channelId)
+      if (message === undefined || channel === undefined || !canRead(channel, me.id)) continue
+      items.push({ id: `reminder:${message.id}`, kind: 'reminder', channelId: channel.id, channelName: channel.name, channelKind: channel.kind, message, actorIds: [], emoji: '', at: saved.remindAt ?? 0 })
+    }
+  }
   const order = new Map(data.messages.map((message, index) => [message.id, index]))
   return items.sort((a, b) => b.at - a.at || (order.get(b.message.id) ?? 0) - (order.get(a.message.id) ?? 0)).slice(0, LISTED)
 }

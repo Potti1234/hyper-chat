@@ -1,7 +1,7 @@
 import { Data, Effect } from 'effect'
 
 import { activityOf } from './activity'
-import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_FILES, MAX_MESSAGE, MAX_TOPIC, type Attachment, type Member, type Message, type NotifyLevel, type Preferences, type Read, type Saved, type SavedState, canRead, channelSlug, defaultNotify, inChannel, isMemberOf, notifyLevel, preferencesOf } from './domain'
+import { ACTIVITY_READ, AVATAR_COLORS, type Channel, DEFAULT_CHANNEL, MAX_CHANNEL_NAME, MAX_DESCRIPTION, MAX_FILES, MAX_MESSAGE, MAX_TOPIC, type Attachment, type Member, type Message, type NotifyLevel, type Preferences, type Read, type Saved, type SavedState, type Scheduled, canRead, channelSlug, defaultNotify, inChannel, isMemberOf, notifyLevel, preferencesOf } from './domain'
 import { isSidebarSlug } from './preferences'
 import { STATUS_EMOJI, isEmoji } from './emoji'
 import { MAX_NAME, MAX_PRONOUNS, MAX_STATUS, MAX_TITLE, isTimeZone } from './profile'
@@ -19,11 +19,13 @@ export type WorkspaceData = Readonly<{
   messages: ReadonlyArray<Message>
   reads: ReadonlyArray<Read>
   saves: ReadonlyArray<Saved>
+  /** Messages waiting for their time (Schedule for later). */
+  scheduled: ReadonlyArray<Scheduled>
   /** Password hashes by member id. They never leave the store. */
   passwords: Readonly<Record<string, string>>
 }>
 
-export const emptyData: WorkspaceData = { members: [], channels: [], messages: [], reads: [], saves: [], passwords: {} }
+export const emptyData: WorkspaceData = { members: [], channels: [], messages: [], reads: [], saves: [], scheduled: [], passwords: {} }
 
 export class InvalidChange extends Data.TaggedError('InvalidChange')<{ readonly reason: string }> {}
 
@@ -347,6 +349,67 @@ export const postMessage =
       return [message, { ...data, messages: [...data.messages, message], reads: withRead(data.reads, { memberId: actorId, channelId, at }) }] as const
     })
 
+// SCHEDULED MESSAGES AND REMINDERS
+
+/** Schedule for later: checked like a message now, posted at `sendAt` by
+ *  `deliverDue`. */
+export const scheduleMessage =
+  (channelId: string, text: string, actorId: string, sendAt: number, files: ReadonlyArray<Attachment> = []): Op<Scheduled, InvalidChange> =>
+  (data, { at, id }) =>
+    Effect.gen(function* () {
+      const channel = yield* findChannel(data, channelId)
+      if (channel.isArchived) return yield* invalid('This channel is archived.')
+      if (!isMemberOf(channel, actorId)) return yield* invalid(`Join #${channel.name} to write in it.`)
+      if (files.length > MAX_FILES) return yield* invalid(`Share at most ${MAX_FILES} files at once.`)
+      if (sendAt <= at) return yield* invalid('Pick a time in the future.')
+      const body = yield* messageText(text, files.length > 0)
+      const item: Scheduled = { id: id('sch'), authorId: actorId, channelId, text: body, ...(files.length === 0 ? {} : { files }), sendAt, createdAt: at }
+      return [item, { ...data, scheduled: [...data.scheduled, item] }] as const
+    })
+
+const findScheduled = (data: WorkspaceData, scheduledId: string, actorId: string): Effect.Effect<Scheduled, InvalidChange> => {
+  const item = data.scheduled.find(candidate => candidate.id === scheduledId && candidate.authorId === actorId)
+  return item === undefined ? invalid('That message was sent or cancelled already.') : Effect.succeed(item)
+}
+
+export const cancelScheduled =
+  (scheduledId: string, actorId: string): Op<void, InvalidChange> =>
+  data =>
+    Effect.map(findScheduled(data, scheduledId, actorId), item => [undefined, { ...data, scheduled: data.scheduled.filter(candidate => candidate !== item) }] as const)
+
+const send = (item: Scheduled): Op<Message, InvalidChange> => (data, context) =>
+  postMessage(item.channelId, item.text, item.authorId, { files: item.files ?? [] })({ ...data, scheduled: data.scheduled.filter(candidate => candidate !== item) }, context)
+
+/** "Send now" on a scheduled message. */
+export const sendScheduledNow =
+  (scheduledId: string, actorId: string): Op<Message, InvalidChange> =>
+  (data, context) =>
+    Effect.flatMap(findScheduled(data, scheduledId, actorId), item => send(item)(data, context))
+
+/** Whether `deliverDue` has anything to do at `now` (checked before taking
+ *  the lock, so idle processes stay out of the database). */
+export const isDue = (data: Pick<WorkspaceData, 'scheduled' | 'saves'>, now: number): boolean =>
+  data.scheduled.some(item => item.sendAt <= now) || data.saves.some(saved => saved.remindAt !== undefined && saved.reminded !== true && saved.remindAt <= now)
+
+/** Posts the scheduled messages whose time came (those that can no longer
+ *  be posted, say in a channel archived since, are dropped) and sets off
+ *  due reminders. The number of messages posted. */
+export const deliverDue = (): Op<number> => (data, context) =>
+  Effect.gen(function* () {
+    let next = data
+    let posted = 0
+    for (const item of data.scheduled.filter(candidate => candidate.sendAt <= context.at).sort((a, b) => a.sendAt - b.sendAt)) {
+      const result = yield* Effect.result(send(item)(next, context))
+      if (result._tag === 'Success') {
+        next = result.success[1]
+        posted++
+      } else next = { ...next, scheduled: next.scheduled.filter(candidate => candidate.id !== item.id) }
+    }
+    if (next.saves.some(saved => saved.remindAt !== undefined && saved.reminded !== true && saved.remindAt <= context.at))
+      next = { ...next, saves: next.saves.map(saved => (saved.remindAt !== undefined && saved.reminded !== true && saved.remindAt <= context.at ? { ...saved, reminded: true } : saved)) }
+    return [posted, next] as const
+  })
+
 const findMessage = (data: WorkspaceData, messageId: string): Effect.Effect<Message, InvalidChange> => {
   const message = data.messages.find(candidate => candidate.id === messageId)
   return message === undefined ? invalid('That message was deleted.') : Effect.succeed(message)
@@ -405,7 +468,31 @@ export const setSavedState =
       const current = data.saves.find(saved => saved.memberId === memberId && saved.messageId === messageId)
       if (current === undefined) return yield* invalid('That item is no longer saved.')
       if (current.state === state) return [undefined, data] as const
-      return [undefined, { ...data, saves: data.saves.map(saved => (saved === current ? { ...current, state, at } : saved)) }] as const
+      // Completing an item ends its reminder, as in Slack.
+      const { remindAt: _remindAt, reminded: _reminded, ...rest } = current
+      const next: Saved = state === 'done' ? { ...rest, state, at } : { ...current, state, at }
+      return [undefined, { ...data, saves: data.saves.map(saved => (saved === current ? next : saved)) }] as const
+    })
+
+/** "Remind me about this": saves the message for later (back in progress if
+ *  it was completed) with a reminder at `remindAt`, or (null) drops the
+ *  reminder and keeps it saved. */
+export const setReminder =
+  (messageId: string, memberId: string, remindAt: number | null): Op<void, InvalidChange> =>
+  (data, { at }) =>
+    Effect.gen(function* () {
+      const message = yield* findMessage(data, messageId)
+      const channel = yield* findChannel(data, message.channelId)
+      if (!canRead(channel, memberId) || !data.members.some(member => member.id === memberId)) return yield* invalid('That message was deleted.')
+      if (remindAt !== null && remindAt <= at) return yield* invalid('Pick a time in the future.')
+      const current = data.saves.find(saved => saved.memberId === memberId && saved.messageId === messageId)
+      if (remindAt === null) {
+        if (current?.remindAt === undefined) return [undefined, data] as const
+        const { remindAt: _remindAt, reminded: _reminded, ...rest } = current
+        return [undefined, { ...data, saves: data.saves.map(saved => (saved === current ? rest : saved)) }] as const
+      }
+      const next: Saved = { memberId, messageId, state: 'saved', at: current?.state === 'saved' ? current.at : at, remindAt }
+      return [undefined, { ...data, saves: current === undefined ? [...data.saves, next] : data.saves.map(saved => (saved === current ? next : saved)) }] as const
     })
 
 /** Removes a message from Later, in progress or completed. */
@@ -520,6 +607,7 @@ export const addDemo =
         messages: [...data.messages, ...demo.messages],
         reads: [...data.reads, ...demo.reads],
         saves: [...data.saves, ...demo.saves],
+        scheduled: [...data.scheduled, ...demo.scheduled],
         passwords: { ...data.passwords, ...demo.passwords },
       },
     ] as const)
@@ -539,6 +627,7 @@ export const clearDemo = (): Op<DemoCounts> => data => {
     messages,
     reads: data.reads.filter(read => !demoMembers.has(read.memberId) && (channelIds.has(read.channelId) || read.channelId === ACTIVITY_READ)),
     saves: data.saves.filter(saved => !demoMembers.has(saved.memberId) && messageIds.has(saved.messageId)),
+    scheduled: data.scheduled.filter(item => !demoMembers.has(item.authorId) && channelIds.has(item.channelId)),
     passwords: Object.fromEntries(Object.entries(data.passwords).filter(([id]) => !demoMembers.has(id))),
   })
 }

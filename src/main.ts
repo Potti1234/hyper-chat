@@ -19,6 +19,7 @@ import * as ThreadsPage from '@/app/threads/page'
 import * as Files from '@/app/files'
 import * as Links from '@/app/links'
 import * as Postgres from '@/app/postgres'
+import * as Scheduler from '@/app/scheduler'
 
 /* The server: one hyper-effect layer per page, plain routes for sign-in and
    static files, the workspace in Postgres, and session snapshots there too
@@ -69,6 +70,7 @@ const Routes = Layer.mergeAll(
 )
 
 HttpRouter.serve(Routes).pipe(
+  Layer.merge(Scheduler.layer),
   Layer.provide(Hyper.sqlStore()),
   Layer.provideMerge(Layer.merge(Postgres.layer, Files.postgresLayer)),
   Layer.provide(Postgres.clientLayer),

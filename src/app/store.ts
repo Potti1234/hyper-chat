@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { Clock, Context, Effect, Layer, type Scope, Semaphore, Stream, SubscriptionRef } from 'effect'
 
-import type { Channel, Member, Message, NotifyLevel, Preferences, Read, Saved, SavedState } from './domain'
+import type { Attachment, Channel, Member, Message, NotifyLevel, Preferences, Read, Saved, SavedState, Scheduled } from './domain'
 import { hashPassword, verifyPassword } from './password'
 import { type Presence, memoryPresence, sameIds } from './presence'
 import { type Typing, type Typist, memoryTyping } from './typing'
@@ -17,6 +17,11 @@ import {
   type WorkspaceData,
   addDemo,
   addMember,
+  cancelScheduled,
+  deliverDue,
+  scheduleMessage,
+  sendScheduledNow,
+  setReminder,
   addToChannel,
   clearDemo,
   createChannel,
@@ -63,6 +68,7 @@ export type WorkspaceState = Readonly<{
   messages: ReadonlyArray<Message>
   reads: ReadonlyArray<Read>
   saves: ReadonlyArray<Saved>
+  scheduled: ReadonlyArray<Scheduled>
   /** Who has a page open right now, by id (see presence.ts). */
   online: ReadonlyArray<string>
 }>
@@ -75,7 +81,7 @@ export type Snapshot = Readonly<{ version: number; data: WorkspaceData; state: S
 export const snapshotOf = (version: number, data: WorkspaceData): Snapshot => ({
   version,
   data,
-  state: { version, members: data.members, channels: data.channels, messages: data.messages, reads: data.reads, saves: data.saves },
+  state: { version, members: data.members, channels: data.channels, messages: data.messages, reads: data.reads, saves: data.saves, scheduled: data.scheduled },
 })
 
 export type Backend = Readonly<{
@@ -127,6 +133,13 @@ export class Workspace extends Context.Service<
     readonly toggleSaved: (messageId: string, memberId: string) => Effect.Effect<boolean, InvalidChange>
     readonly setSavedState: (messageId: string, memberId: string, state: SavedState) => Effect.Effect<void, InvalidChange>
     readonly removeSaved: (messageId: string, memberId: string) => Effect.Effect<void>
+    /** "Remind me about this" at `remindAt`; null removes the reminder. */
+    readonly setReminder: (messageId: string, memberId: string, remindAt: number | null) => Effect.Effect<void, InvalidChange>
+    readonly scheduleMessage: (channelId: string, text: string, actorId: string, sendAt: number, files?: ReadonlyArray<Attachment>) => Effect.Effect<Scheduled, InvalidChange>
+    readonly cancelScheduled: (scheduledId: string, actorId: string) => Effect.Effect<void, InvalidChange>
+    readonly sendScheduledNow: (scheduledId: string, actorId: string) => Effect.Effect<Message, InvalidChange>
+    /** Posts due scheduled messages and sets off due reminders (scheduler.ts). */
+    readonly deliverDue: Effect.Effect<number>
     readonly togglePin: (messageId: string, actorId: string) => Effect.Effect<boolean, InvalidChange>
     readonly editMessage: (messageId: string, text: string, actorId: string) => Effect.Effect<Message, InvalidChange>
     readonly deleteMessage: (messageId: string, actorId: string) => Effect.Effect<void, InvalidChange>
@@ -180,6 +193,11 @@ export const fromBackend = (backend: Backend): Workspace['Service'] => ({
   toggleSaved: (messageId, memberId) => backend.run(toggleSaved(messageId, memberId)),
   setSavedState: (messageId, memberId, state) => backend.run(setSavedState(messageId, memberId, state)),
   removeSaved: (messageId, memberId) => backend.run(removeSaved(messageId, memberId)),
+  setReminder: (messageId, memberId, remindAt) => backend.run(setReminder(messageId, memberId, remindAt)),
+  scheduleMessage: (channelId, text, actorId, sendAt, files) => backend.run(scheduleMessage(channelId, text, actorId, sendAt, files)),
+  cancelScheduled: (scheduledId, actorId) => backend.run(cancelScheduled(scheduledId, actorId)),
+  sendScheduledNow: (scheduledId, actorId) => backend.run(sendScheduledNow(scheduledId, actorId)),
+  deliverDue: backend.run(deliverDue()),
   togglePin: (messageId, actorId) => backend.run(togglePin(messageId, actorId)),
   editMessage: (messageId, text, actorId) => backend.run(editMessage(messageId, text, actorId)),
   deleteMessage: (messageId, actorId) => backend.run(deleteMessage(messageId, actorId)),
