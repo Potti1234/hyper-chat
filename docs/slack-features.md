@@ -75,11 +75,11 @@ components; the colours are theme tokens (`--sidebar`, `--sidebar-foreground`,
 | Threads | "Reply in thread" opens the thread pane; "N replies" row with avatars and last reply time; "Also send to #channel" checkbox | **done** |
 | Threads view | All threads you are part of, unread first | **done** |
 | Mentions | `@person`, `@channel`, `@here`; highlighted, yellow background when it mentions you | **done** |
-| Channel links | `#channel` links | **planned** |
+| Channel links | `#channel` links | **done**: `#name` in a message links to `/channel/:name`, which opens the channel if you can see it and the channel browser otherwise |
 | Formatting | Bold `*x*`, italic `_x_`, strike `~x~`, `code`, code blocks, quotes `>`, lists, links; a formatting toolbar | **done**: `*bold*`, `_italic_`, `~strike~`, `` `code` ``, ```` ``` ```` blocks, `>` quotes, `-` and `1.` lists, `[text](url)` and bare links, `:emoji:` names; a formatting bar above every composer with Slack's shortcuts (Ctrl+B, Ctrl+I, Ctrl+Shift+X/U/C/7/8/9) |
 | Pins | Pin to channel, Pins tab | **done** (Pins tab in the header and details, "Pinned by" label) |
 | Save for later | Bookmark a message, Later view (in progress / done) | **done** (Later page with In progress / Completed) |
-| Copy link | Link to a message | **planned** |
+| Copy link | Link to a message | **done**: "Copy link" in the message menu copies `/archives/:channel/:message`, which opens the conversation scrolled to the highlighted message (or its thread for a reply) for anyone who can read it |
 | Mark unread | From the ⋮ menu: unread from here | **done** (also from the hover menu on others’ messages) |
 | Files | Upload in the composer (📎 / drop), image previews, Files tab | **done**: the + button or a drop on the channel/DM composer uploads up to 10 files of up to 10 MB; they wait as removable cards and a message may be only files. PNG, JPEG, GIF and WebP (recognised by their bytes) show inline and open full size; anything else is a download card. Served only to people who can read the conversation. Not yet: uploads in thread replies and the Files tab |
 | Typing indicator | "Alex is typing…" under the composer | **done**: shown to the others in a channel or DM while someone has a draft there ("Blake is typing…", "Blake and Casey are typing…", "Several people are typing…"); it ends when they send, clear the draft or stop for 6 seconds, across server processes. Not yet: in thread replies |
